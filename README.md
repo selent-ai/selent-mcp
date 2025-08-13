@@ -1,6 +1,6 @@
 # Selent MCP
 
-A powerful Model Context Protocol (MCP) server that provides dynamic access to the entire Meraki Dashboard API. Instead of creating hundreds of individual tools, Selent MCP uses intelligent discovery to find and execute any Meraki API endpoint on demand.
+A powerful Model Context Protocol (MCP) server that provides dynamic access to the entire Meraki Dashboard API plus advanced compliance and security auditing capabilities. Instead of creating hundreds of individual tools, Selent MCP uses intelligent discovery to find and execute any Meraki API endpoint on demand.
 
 ## 🚀 Features
 
@@ -12,6 +12,14 @@ A powerful Model Context Protocol (MCP) server that provides dynamic access to t
 - **Parameter Discovery**: Automatic detection of required and optional parameters
 - **Smart Validation**: Generic parameter validation with helpful error messages
 
+### **Compliance & Security Auditing** 🛡️
+
+- **Multi-Framework Support**: PCI DSS, HIPAA, SOC2, ISO 27001, NIST Cybersecurity Framework
+- **Automated Compliance Scanning**: Comprehensive security assessments across your entire Meraki organization
+- **Critical Finding Detection**: Identifies security gaps and compliance violations
+- **Actionable Recommendations**: Specific remediation steps for each finding
+- **Detailed Reporting**: Executive summaries and technical details for compliance documentation
+
 ### **Backup & Restore Operations** 🔄
 
 - **Organization Backup**: Create complete backups of your Meraki organization
@@ -19,7 +27,15 @@ A powerful Model Context Protocol (MCP) server that provides dynamic access to t
 - **Status Monitoring**: Real-time progress tracking for backup and restore operations
 - **Error Handling**: Comprehensive error reporting and recovery guidance
 
-> **Note**: Backup and restore functionality requires a **Selent API key**. Contact [Selent](https://selent.ai) to obtain access.
+### **Advanced Network Analysis** 📊
+
+- **Network Topology Analysis**: Comprehensive device relationships and connections
+- **Device Health Monitoring**: Performance metrics and diagnostics
+- **Security Auditing**: Network-wide security assessments
+- **Performance Analytics**: Bottleneck identification and optimization recommendations
+- **Configuration Drift Detection**: Identify inconsistencies across networks
+
+> **Note**: Advanced features (backup/restore, compliance auditing) require a **Selent API key**. Contact [Selent](https://selent.ai) to obtain access.
 
 ## 🐳 Quick Start with Docker
 
@@ -27,7 +43,7 @@ A powerful Model Context Protocol (MCP) server that provides dynamic access to t
 
 - Docker installed and running
 - Meraki Dashboard API key ([Get one here](https://documentation.meraki.com/General_Administration/Other_Topics/Cisco_Meraki_Dashboard_API))
-- Selent API key (optional, required for backup/restore features - contact [Selent](https://selent.ai))
+- Selent API key (optional, required for advanced features - contact [Selent](https://selent.ai))
 
 ### 2. Deploy the Server
 
@@ -36,10 +52,11 @@ A powerful Model Context Protocol (MCP) server that provides dynamic access to t
 ```bash
 # Set your API keys
 export MERAKI_API_KEY="your_meraki_api_key_here"
-export SELENT_API_KEY="your_selent_api_key_here"  # Optional, for backup/restore
+export SELENT_API_KEY="your_selent_api_key_here"  # Optional, for advanced features
 
-# Run directly from Docker Hub
+# Run directly from Docker Hub (always pulls latest)
 docker run \
+  --pull=always \
   -e MERAKI_API_KEY=$MERAKI_API_KEY \
   -e SELENT_API_KEY=$SELENT_API_KEY \
   -i --rm selentai/selent-mcp:latest
@@ -75,6 +92,7 @@ Update your Claude Desktop configuration file:
         "run",
         "-i",
         "--rm",
+        "--pull=always",
         "-e",
         "MERAKI_API_KEY=your_meraki_api_key_here",
         "-e",
@@ -89,6 +107,23 @@ Update your Claude Desktop configuration file:
 ### 4. Restart Claude Desktop
 
 Restart Claude Desktop to load the new MCP server.
+
+### 5. Test Your Configuration
+
+Once Claude Desktop restarts, test your setup:
+
+```
+# Test basic API access
+"What Meraki organizations do I have access to?"
+
+# Test compliance tools (requires Selent API key)
+"What compliance types are available?"
+
+# Test a compliance scan (requires Selent API key)
+"Run a PCI compliance test"
+```
+
+The `--pull=always` flag ensures you automatically get the latest features and security updates without manual intervention.
 
 ## 📖 Usage Examples
 
@@ -106,6 +141,54 @@ Restart Claude Desktop to load the new MCP server.
 
 # Firewall rules
 "Get MX firewall rules for device Q2KN-Q6GH-CREQ"
+```
+
+### **Compliance Testing**
+
+```
+# Get available compliance frameworks
+"What compliance types are available?"
+
+# Run PCI DSS compliance test
+"Run PCI compliance test on my organization"
+
+# Test SOC2 compliance
+"Perform SOC2 compliance audit"
+
+# NIST Cybersecurity Framework assessment
+"Run NIST compliance check"
+```
+
+### **Backup & Restore**
+
+```
+# Create organization backup
+"Create a backup of my entire Meraki organization"
+
+# Check backup status
+"What's the status of backup abc123?"
+
+# Restore a device
+"Restore device Q2XX-XXXX-XXXX from backup abc123"
+
+# Restore a network
+"Restore network L_123456789 from backup abc123"
+```
+
+### **Advanced Analytics**
+
+```
+# Network topology analysis
+"Analyze the topology of network N_12345"
+
+# Device health check
+"Check the health of device Q2XX-XXXX-XXXX"
+
+# Security audit
+"Perform security audit on network N_12345"
+
+# Performance analysis
+"Analyze performance of network N_12345"
 ```
 
 ## 🛠 Development & Management
@@ -131,7 +214,7 @@ docker-compose up -d --build
 
 ## 🔧 Available Tools
 
-### **API Tools**
+### **Core API Tools**
 
 - `search_meraki_api_endpoints` - Find API endpoints using natural language
 - `execute_meraki_api_endpoint` - Execute any Meraki API call
@@ -145,7 +228,10 @@ docker-compose up -d --build
 ✅ **Always Up-to-Date**: Uses live Meraki API, automatically includes new endpoints  
 ✅ **Production Ready**: Docker deployment for consistency across environments  
 ✅ **Multi-User Support**: Scale across teams with individual API keys  
-✅ **Performance Optimized**: Caching, error handling, and smart parameter validation
+✅ **Performance Optimized**: Caching, error handling, and smart parameter validation  
+✅ **Compliance Ready**: Built-in support for PCI DSS, HIPAA, SOC2, ISO 27001, NIST  
+✅ **Auto-Updates**: `--pull=always` ensures latest features and security patches  
+✅ **Enterprise Features**: Backup/restore, security auditing, performance analytics
 
 ## 🔐 Security & Environment
 
@@ -154,7 +240,7 @@ docker-compose up -d --build
 | Variable              | Required | Description                                                   |
 | --------------------- | -------- | ------------------------------------------------------------- |
 | `MERAKI_API_KEY`      | Yes      | Your Meraki Dashboard API key                                 |
-| `SELENT_API_KEY`      | Optional | Your Selent API key (required for backup/restore)             |
+| `SELENT_API_KEY`      | Optional | Your Selent API key (required for advanced features)          |
 | `SELENT_API_BASE_URL` | Optional | Selent API base URL (defaults to `https://backend.selent.ai`) |
 
 ### **Security Best Practices**
