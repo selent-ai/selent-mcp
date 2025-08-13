@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  selent-mcp:
+    build: .
+    image: selent-mcp:latest
+    container_name: selent-mcp-server
+    environment:
+      - MERAKI_API_KEY=${MERAKI_API_KEY}
+      - SELENT_API_KEY=${SELENT_API_KEY}
+      - SELENT_API_BASE_URL=${SELENT_API_BASE_URL:-https://backend.selent.ai}
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "uv",
+          "run",
+          "python",
+          "-c",
+          "import selent_mcp.main; print('healthy')",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
