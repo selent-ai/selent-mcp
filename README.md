@@ -241,7 +241,6 @@ docker-compose up -d --build
 | --------------------- | -------- | ------------------------------------------------------------- |
 | `MERAKI_API_KEY`      | Yes      | Your Meraki Dashboard API key                                 |
 | `SELENT_API_KEY`      | Optional | Your Selent API key (required for advanced features)          |
-| `SELENT_API_BASE_URL` | Optional | Selent API base URL (defaults to `https://backend.selent.ai`) |
 
 ### **Security Best Practices**
 
