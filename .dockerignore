@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache
+.coverage
+
+# Virtual environments
+venv
+env
+.env
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+client_mcp/
+examples/
+research/
+api/
+*.md
+!README.md
+
+# Test files
+*test*.py
+*test*.json
+comprehensive_api_results.json
+api_test_results.json
+
+# Logs
+*.log 

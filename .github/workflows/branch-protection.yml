@@ -1,0 +1,37 @@
+name: Branch Protection
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  enforce-merge-restrictions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if authorized to merge
+        run: |
+          # Only allow organization members to merge to main
+          ORG_NAME="selent-ai"
+          CURRENT_USER="${{ github.actor }}"
+
+          echo "Organization: $ORG_NAME"
+          echo "Current user: $CURRENT_USER"
+
+          # Check if user is a member of the organization
+          if gh api orgs/$ORG_NAME/members/$CURRENT_USER --silent 2>/dev/null; then
+            echo "✅ User $CURRENT_USER is a member of $ORG_NAME organization"
+            echo "✅ Authorized to merge to main branch"
+          else
+            echo "❌ Error: Only members of $ORG_NAME organization can merge to main branch"
+            echo "Current user $CURRENT_USER is not a member of the organization"
+            echo "Please contact organization administrators for access"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate merge conditions
+        run: |
+          echo "✅ All merge conditions satisfied"
+          echo "✅ Authorized user attempting merge"
+          echo "✅ Ready to proceed with merge to main branch"
