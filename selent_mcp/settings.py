@@ -6,3 +6,4 @@ class ApiSettings(BaseSettings):
     MERAKI_API_KEY: str = ""
     SELENT_API_KEY: str = ""
     SELENT_API_BASE_URL: str = "https://backend.selent.ai"
+    TEST: str = "TEST"
