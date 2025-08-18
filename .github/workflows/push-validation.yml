@@ -1,0 +1,36 @@
+name: Push Validation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  validate-push-authorization:
+    runs-on: ubuntu-latest
+    steps:
+            - name: Validate push authorization
+        run: |
+          # Validate that only authorized users can push to main
+          AUTHORIZED_USER="FabianLevi"
+          PUSH_USER="${{ github.actor }}"
+          
+          echo "Authorized user: $AUTHORIZED_USER"
+          echo "Push user: $PUSH_USER"
+          
+          if [ "$PUSH_USER" != "$AUTHORIZED_USER" ]; then
+            echo "⚠️  Warning: Unauthorized push to main branch detected"
+            echo "User $PUSH_USER pushed to main, but only $AUTHORIZED_USER should push to main"
+            echo "Please use pull requests for code contributions"
+            # Note: We don't exit 1 here since the push already happened
+            # This serves as a notification/audit log
+          else
+            echo "✅ Authorized push by $AUTHORIZED_USER"
+          fi
+
+      - name: Log push details
+        run: |
+          echo "📝 Push Details:"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Repository: ${{ github.repository }}"

@@ -1,0 +1,33 @@
+name: Branch Protection
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  enforce-merge-restrictions:
+    runs-on: ubuntu-latest
+    steps:
+            - name: Check if authorized to merge
+        run: |
+          # Only allow specific user to merge to main
+          AUTHORIZED_USER="FabianLevi"
+          CURRENT_USER="${{ github.actor }}"
+          
+          echo "Authorized user: $AUTHORIZED_USER"
+          echo "Current user: $CURRENT_USER"
+          
+          if [ "$CURRENT_USER" != "$AUTHORIZED_USER" ]; then
+            echo "❌ Error: Only $AUTHORIZED_USER is authorized to merge to main branch"
+            echo "Current user $CURRENT_USER is not authorized to merge"
+            echo "Please contact $AUTHORIZED_USER for merge approval"
+            exit 1
+          else
+            echo "✅ User $CURRENT_USER is authorized to merge to main"
+          fi
+
+      - name: Validate merge conditions
+        run: |
+          echo "✅ All merge conditions satisfied"
+          echo "✅ Authorized user attempting merge"
+          echo "✅ Ready to proceed with merge to main branch"
