@@ -18,7 +18,7 @@ class MerakiClient:
                     api_key=self.api_key,
                     suppress_logging=True,
                     maximum_retries=3,
-                    caller="Selent-MCP/1.0 Selent",
+                    caller="SelentMCP/1.0 Selent",
                     wait_on_rate_limit=True,
                 )
                 logger.info("Meraki Dashboard API client initialized")
