@@ -15,6 +15,5 @@
     }
   },
   "python.analysis.typeCheckingMode": "basic", // mypy
-  "python.languageServer": "Pylance"
+  "python.languageServer": "None"
 }
-

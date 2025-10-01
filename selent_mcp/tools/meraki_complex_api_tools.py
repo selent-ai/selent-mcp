@@ -23,7 +23,6 @@ class MerakiComplexApiTools:
             self._register_tools()
         else:
             logger.info("MerakiComplexApiTools not registered (MERAKI_API_KEY not set)")
-        self._register_tools()
 
     def _register_tools(self):
         """Register the complex tools with the MCP server"""
