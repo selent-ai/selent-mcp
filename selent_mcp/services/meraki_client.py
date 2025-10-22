@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 class MerakiClient:
     def __init__(self, api_key: str):
-        self.api_key = api_key
-        self._dashboard = None
+        self.api_key: str = api_key
+        self._dashboard: meraki.DashboardAPI | None = None
 
     def get_dashboard(self) -> meraki.DashboardAPI:
         """Get or create dashboard API instance with connection reuse"""

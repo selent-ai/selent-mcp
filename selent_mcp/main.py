@@ -1,6 +1,7 @@
+import argparse
 import logging
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from selent_mcp.services.meraki_client import MerakiClient
 from selent_mcp.services.selent_service_client import SelentServiceClient
@@ -34,4 +35,19 @@ selent_api_tools = SelentApiTools(
 )
 
 if __name__ == "__main__":
-    mcp.run()
+    parser = argparse.ArgumentParser(description="Selent MCP Server")
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host to run the server on"
+    )
+    parser.add_argument(
+        "--port", type=int, default=8000, help="Port to run the server on"
+    )
+    parser.add_argument(
+        "--transport",
+        type=str,
+        default="stdio",
+        help="Transport to use for the server. Can be 'stdio', 'http' or 'sse'",
+    )
+    args = parser.parse_args()
+
+    mcp.run(transport=args.transport, host=args.host, port=args.port)

@@ -1,7 +1,7 @@
 import logging
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from pydantic import BaseModel
 
 from selent_mcp.schemas import (
@@ -25,15 +25,15 @@ class SelentApiTools:
         selent_client: SelentServiceClient,
         enabled: bool,
     ) -> None:
-        self.mcp = mcp
-        self.selent_client = selent_client
-        self.enabled = enabled
+        self.mcp: FastMCP = mcp
+        self.selent_client: SelentServiceClient = selent_client
+        self.enabled: bool = enabled
         if self.enabled:
             self._register_tools()
         else:
             logger.info("SelentApiTools not registered (SELENT_API_KEY not set)")
 
-    def _format_response(self, schema_class: Type[BaseModel], **kwargs) -> str:
+    def _format_response(self, schema_class: type[BaseModel], **kwargs: Any) -> str:
         """Format response using Pydantic schema for consistency."""
         try:
             response = schema_class(**kwargs)
@@ -53,9 +53,10 @@ class SelentApiTools:
             """
             Create a backup of the whole organization via Selent service.
 
-            IMPORTANT: Backup creation is ASYNCHRONOUS and takes 1-2 minutes to complete.
-            This tool only initiates the backup and returns immediately with a backup ID.
-            The backup will continue running in the background.
+            IMPORTANT: Backup creation is ASYNCHRONOUS and takes 1-2 minutes
+            to complete. This tool only initiates the backup and returns
+            immediately with a backup ID. The backup will continue running
+            in the background.
 
             To monitor progress:
             1. Note the backup ID from the response
@@ -135,8 +136,16 @@ class SelentApiTools:
             elif current_status == "SUCCESS":
                 interpretation = {
                     "message": "Backup completed successfully",
-                    "summary": f"Backed up {stats.get('total_components', 0)} components in {stats.get('execution_time_seconds', 0):.1f} seconds",
-                    "success_rate": f"{stats.get('successful_components', 0)}/{stats.get('total_components', 0)} components successful",
+                    "summary": (
+                        f"Backed up {stats.get('total_components', 0)} "
+                        f"components in "
+                        f"{stats.get('execution_time_seconds', 0):.1f} seconds"
+                    ),
+                    "success_rate": (
+                        f"{stats.get('successful_components', 0)}/"
+                        f"{stats.get('total_components', 0)} "
+                        f"components successful"
+                    ),
                 }
             elif current_status == "FAILED":
                 interpretation = {
@@ -170,18 +179,30 @@ class SelentApiTools:
             """
             Restore a device or network from a backup.
 
-            This tool restores a specific component (device or network) from a previously
-            created backup. Use this to restore configurations to devices or networks.
+            This tool restores a specific component (device or network) from
+            a previously created backup. Use this to restore configurations
+            to devices or networks.
 
             Args:
-                backup_id: ID of the backup to restore from (get this from selent_backup or selent_get_backup_status)
-                component_id: Serial number of device (e.g., "Q2XX-XXXX-XXXX") or network ID (e.g., "L_123456789")
-                component_type: Type of component to restore ("device" or "network")
-                network_id: Target network ID where device should be restored (optional for device restores, leave empty for network restores)
-                component_model: REQUIRED for device restores - exact model specification (e.g., "MX68", "MS220-8P", "MR33"). Use get_device_status(serial) to fetch the model if unknown. Leave empty only for network restores.
+                backup_id: ID of the backup to restore from (get this from
+                    selent_backup or selent_get_backup_status)
+                component_id: Serial number of device (e.g., "Q2XX-XXXX-XXXX")
+                    or network ID (e.g., "L_123456789")
+                component_type: Type of component to restore
+                    ("device" or "network")
+                network_id: Target network ID where device should be restored
+                    (optional for device restores, leave empty for network
+                    restores)
+                component_model: REQUIRED for device restores - exact model
+                    specification (e.g., "MX68", "MS220-8P", "MR33"). Use
+                    get_device_status(serial) to fetch the model if unknown.
+                    Leave empty only for network restores.
             Examples:
                 # Restore a device (component_model is REQUIRED)
-                selent_restore("backup-123", "Q2XX-XXXX-XXXX", "device", "L_987654321", "MX68")
+                selent_restore(
+                    "backup-123", "Q2XX-XXXX-XXXX", "device",
+                    "L_987654321", "MX68"
+                )
 
                 # Restore a network (component_model not needed)
                 selent_restore("backup-123", "L_123456789", "network", "", "")
@@ -190,8 +211,11 @@ class SelentApiTools:
                 selent_restore("backup-123", "Q2XX-XXXX-XXXX", "device", "", "MR33")
 
                 # Workflow: Get device model first, then restore
-                # 1. get_device_status("Q2XX-XXXX-XXXX") -> returns model: "MX68"
-                # 2. selent_restore("backup-123", "Q2XX-XXXX-XXXX", "device", "L_987654321", "MX68")
+                # 1. get_device_status("Q2XX-XXXX-XXXX") -> model: "MX68"
+                # 2. selent_restore(
+                #    "backup-123", "Q2XX-XXXX-XXXX", "device",
+                #    "L_987654321", "MX68"
+                # )
 
             Returns:
                 JSON string with restore operation status and details.
@@ -200,17 +224,37 @@ class SelentApiTools:
             if component_type not in ["device", "network"]:
                 return self._format_response(
                     SelentError,
-                    message=f"Invalid component_type '{component_type}'. Must be 'device' or 'network'.",
-                    example="selent_restore('backup-123', 'Q2XX-XXXX-XXXX', 'device', 'L_123456789', 'MX68')",
+                    message=(
+                        f"Invalid component_type '{component_type}'. "
+                        f"Must be 'device' or 'network'."
+                    ),
+                    example=(
+                        "selent_restore('backup-123', 'Q2XX-XXXX-XXXX', "
+                        "'device', 'L_123456789', 'MX68')"
+                    ),
                 )
 
             if component_type == "device" and not component_model:
                 return self._format_response(
                     SelentError,
-                    message="component_model is required when restoring a device. Device restores will fail without the correct model specified.",
-                    example="selent_restore('backup-123', 'Q2XX-XXXX-XXXX', 'device', 'L_123456789', 'MX68')",
-                    note="The component_model must match the actual device model (e.g., 'MX68', 'MS220-8P', 'MR33', etc.)",
-                    how_to_get_model="If you don't know the device model, use get_device_status(serial) to fetch device information including the model field",
+                    message=(
+                        "component_model is required when restoring a device. "
+                        "Device restores will fail without the correct model "
+                        "specified."
+                    ),
+                    example=(
+                        "selent_restore('backup-123', 'Q2XX-XXXX-XXXX', "
+                        "'device', 'L_123456789', 'MX68')"
+                    ),
+                    note=(
+                        "The component_model must match the actual device "
+                        "model (e.g., 'MX68', 'MS220-8P', 'MR33', etc.)"
+                    ),
+                    how_to_get_model=(
+                        "If you don't know the device model, use "
+                        "get_device_status(serial) to fetch device "
+                        "information including the model field"
+                    ),
                 )
 
             model = component_model if component_model else None
@@ -228,7 +272,11 @@ class SelentApiTools:
                 return self._format_response(
                     SelentError,
                     message=result.get("message", "Restore operation failed"),
-                    example=f"selent_restore('{backup_id}', '{component_id}', '{component_type}', '{network_id}', '{component_model}')",
+                    example=(
+                        f"selent_restore('{backup_id}', '{component_id}', "
+                        f"'{component_type}', '{network_id}', "
+                        f"'{component_model}')"
+                    ),
                 )
 
             restore_data = result.get("data", {})
@@ -304,17 +352,26 @@ class SelentApiTools:
             backup_id = status_data.get("backup_id", "unknown")
             structure = status_data.get("structure", {})
 
-            interpretation: Dict[str, Any] = {}
+            interpretation: dict[str, Any] = {}
             if current_status == "RUNNING":
                 interpretation = {
-                    "message": f"Restore of {component_type} {component_id} is currently in progress",
+                    "message": (
+                        f"Restore of {component_type} {component_id} is "
+                        f"currently in progress"
+                    ),
                     "action": "Wait and check again in 30-60 seconds",
                     "typical_duration": "1-2 minutes for most components",
                 }
             elif current_status == "SUCCESS":
                 interpretation = {
-                    "message": f"{component_type.title()} {component_id} restored successfully",
-                    "summary": f"Restore operation completed for {component_type} {component_id}",
+                    "message": (
+                        f"{component_type.title()} {component_id} "
+                        f"restored successfully"
+                    ),
+                    "summary": (
+                        f"Restore operation completed for {component_type} "
+                        f"{component_id}"
+                    ),
                     "next_steps": [
                         "Verify the component configuration in Dashboard",
                         "Test connectivity if a device was restored",
@@ -334,7 +391,10 @@ class SelentApiTools:
             elif current_status == "ERROR":
                 components = structure.get("components", [])
                 interpretation = {
-                    "message": f"Restore of {component_type} {component_id} encountered errors",
+                    "message": (
+                        f"Restore of {component_type} {component_id} "
+                        f"encountered errors"
+                    ),
                     "action": "Check component-level status for details",
                     "component_status": [],
                 }
@@ -348,7 +408,8 @@ class SelentApiTools:
 
                 if interpretation["component_status"]:
                     interpretation["summary"] = (
-                        f"Component breakdown: {', '.join(interpretation['component_status'])}"
+                        f"Component breakdown: "
+                        f"{', '.join(interpretation['component_status'])}"
                     )
             else:
                 interpretation = {
@@ -364,12 +425,14 @@ class SelentApiTools:
                 component_id=component_id,
                 backup_id=backup_id,
                 progress_details=structure,
-                execution_time=f"{structure.get('execution_time_seconds', 0):.1f} seconds",
+                execution_time=(
+                    f"{structure.get('execution_time_seconds', 0):.1f} " f"seconds"
+                ),
                 interpretation=interpretation,
             )
 
         @self.mcp.tool()
-        def selent_get_compliance_types() -> str | dict:
+        def selent_get_compliance_types() -> str | dict[str, Any]:
             """
             Get a list of all compliance types.
             """
@@ -386,8 +449,8 @@ class SelentApiTools:
 
         @self.mcp.tool()
         def selent_run_compliance_check(
-            compliance_type: str, network_id: Optional[str] = None
-        ) -> str | dict:
+            compliance_type: str, network_id: str | None = None
+        ) -> str | dict[str, Any]:
             """Run a compliance check for a specific compliance type."""
             result = self.selent_client.run_compliance_check(
                 compliance_type, network_id

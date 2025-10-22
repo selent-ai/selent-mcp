@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -13,10 +13,10 @@ class SelentServiceClient:
     """
 
     def __init__(self, base_url: str, api_key: str, timeout_seconds: int = 90):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.timeout_seconds = timeout_seconds
-        self._client: Optional[httpx.Client] = None
+        self.base_url: str = base_url.rstrip("/")
+        self.api_key: str = api_key
+        self.timeout_seconds: int = timeout_seconds
+        self._client: httpx.Client | None = None
 
     def _get_client(self) -> httpx.Client:
         if self._client is None:
@@ -32,13 +32,13 @@ class SelentServiceClient:
             logger.info("Selent service HTTP client initialized")
         return self._client
 
-    def _handle_response(self, response: httpx.Response) -> Dict[str, Any]:
+    def _handle_response(self, response: httpx.Response) -> dict[str, Any]:
         try:
             response.raise_for_status()
             data = response.json()
             return {"status": response.status_code, "data": data}
         except httpx.HTTPStatusError as http_error:
-            payload: Dict[str, Any]
+            payload: dict[str, Any]
             try:
                 payload = response.json()
             except ValueError:
@@ -52,7 +52,7 @@ class SelentServiceClient:
         except httpx.RequestError as request_error:
             return {"error": True, "message": str(request_error)}
 
-    def create_backup(self) -> Dict[str, Any]:
+    def create_backup(self) -> dict[str, Any]:
         """
         Trigger backup creation for the entire organization.
 
@@ -73,7 +73,7 @@ class SelentServiceClient:
 
         return result
 
-    def get_backup_status(self, backup_id: str) -> Dict[str, Any]:
+    def get_backup_status(self, backup_id: str) -> dict[str, Any]:
         """Get the status of a specific backup by ID."""
         client = self._get_client()
         response = client.get(f"/mcp/backups/{backup_id}")
@@ -84,9 +84,9 @@ class SelentServiceClient:
         component_id: str,
         backup_id: str,
         component_type: str,
-        component_model: Optional[str] = None,
-        network_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        component_model: str | None = None,
+        network_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Restore a specific component (device or network) from a backup.
 
@@ -112,7 +112,8 @@ class SelentServiceClient:
             restore_request["network_id"] = network_id
 
         logger.info(
-            f"Initiating restore for {component_type} {component_id} from backup {backup_id}"
+            f"Initiating restore for {component_type} {component_id} "
+            f"from backup {backup_id}"
         )
         client = self._get_client()
         response = client.post("/mcp/restores", json=restore_request)
@@ -125,21 +126,21 @@ class SelentServiceClient:
 
         return result
 
-    def get_restore_status(self, restore_id: str) -> Dict[str, Any]:
+    def get_restore_status(self, restore_id: str) -> dict[str, Any]:
         """Get the status of a specific restore operation by ID."""
         client = self._get_client()
         response = client.get(f"/mcp/restores/{restore_id}")
         return self._handle_response(response)
 
-    def get_compliance_types(self) -> Dict[str, Any]:
+    def get_compliance_types(self) -> dict[str, Any]:
         """Get a list of all compliance types."""
         client = self._get_client()
         response = client.get("/mcp/compliance/types")
         return self._handle_response(response)
 
     def run_compliance_check(
-        self, compliance_type: str, network_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, compliance_type: str, network_id: str | None = None
+    ) -> dict[str, Any]:
         """Run a compliance check for a specific compliance type."""
         client = self._get_client()
         response = client.post(

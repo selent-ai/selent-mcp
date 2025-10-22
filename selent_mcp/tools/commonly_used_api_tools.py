@@ -1,8 +1,8 @@
 import json
 import logging
-from typing import Optional
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
+from meraki import DashboardAPI
 
 from selent_mcp.services.meraki_client import MerakiClient
 from selent_mcp.settings import ApiSettings
@@ -21,10 +21,10 @@ class CommonlyUsedMerakiApiTools:
     """
 
     def __init__(self, mcp: FastMCP, meraki_client: MerakiClient, enabled: bool):
-        self.mcp = mcp
-        self.meraki_client = meraki_client
-        self.dashboard = self.meraki_client.get_dashboard()
-        self.enabled = enabled
+        self.mcp: FastMCP = mcp
+        self.meraki_client: MerakiClient = meraki_client
+        self.dashboard: DashboardAPI = self.meraki_client.get_dashboard()
+        self.enabled: bool = enabled
         if self.enabled:
             self._register_tools()
         else:
@@ -172,9 +172,7 @@ class CommonlyUsedMerakiApiTools:
                 )
 
         @self.mcp.tool()
-        def get_network_clients(
-            network_id: str, timespan: Optional[int] = 2592000
-        ) -> str:
+        def get_network_clients(network_id: str, timespan: int | None = 2592000) -> str:
             """
             Get clients connected to a network.
 
@@ -386,7 +384,8 @@ class CommonlyUsedMerakiApiTools:
                 network_id: The network identifier (e.g., "N_12345")
 
             Returns:
-                JSON string containing network topology with device links and connections.
+                JSON string containing network topology with device links and
+                connections.
             """
             try:
                 topology = self.dashboard.networks.getNetworkTopologyLinkLayer(

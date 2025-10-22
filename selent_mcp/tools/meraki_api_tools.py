@@ -4,9 +4,9 @@ import json
 import logging
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from selent_mcp.services.meraki_client import MerakiClient
 
@@ -17,21 +17,21 @@ class MerakiApiTools:
     """Dynamic tool class that can discover and execute any Meraki API endpoint"""
 
     def __init__(self, mcp: FastMCP, meraki_client: MerakiClient, enabled: bool):
-        self.mcp = mcp
-        self.meraki_client = meraki_client
-        self._api_cache: Dict[str, List[str]] = {}
-        self._device_cache: Dict[str, Dict] = {}
-        self._response_cache: Dict[str, Dict] = {}
-        self._cache_ttl = 300
-        self._search_patterns: List[Dict] = []
-        self._patterns_initialized = False
-        self.enabled = enabled
+        self.mcp: FastMCP = mcp
+        self.meraki_client: MerakiClient = meraki_client
+        self._api_cache: dict[str, list[str]] = {}
+        self._device_cache: dict[str, dict[str, Any]] = {}
+        self._response_cache: dict[str, dict[str, Any]] = {}
+        self._cache_ttl: int = 300
+        self._search_patterns: list[dict[str, Any]] = []
+        self._patterns_initialized: bool = False
+        self.enabled: bool = enabled
         if self.enabled:
             self._register_tools()
         else:
             logger.info("MerakiApiTools not registered (MERAKI_API_KEY not set)")
 
-    def _generate_keywords_from_method(self, section: str, method: str) -> List[str]:
+    def _generate_keywords_from_method(self, section: str, method: str) -> list[str]:
         """Generate semantic keywords from section and method names"""
         keywords = []
 
@@ -102,7 +102,7 @@ class MerakiApiTools:
         else:
             return 0.3
 
-    def _get_method_parameters(self, section: str, method: str) -> List[str]:
+    def _get_method_parameters(self, section: str, method: str) -> list[str]:
         """Get required parameters for a method using inspection"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -120,7 +120,7 @@ class MerakiApiTools:
         except Exception:
             return []
 
-    def _generate_dynamic_patterns(self) -> List[Dict]:
+    def _generate_dynamic_patterns(self) -> list[dict[str, Any]]:
         """Generate semantic patterns for ALL available API endpoints"""
         api_structure = self._discover_api_structure()
         patterns = []
@@ -148,11 +148,12 @@ class MerakiApiTools:
 
         return patterns
 
-    def _initialize_search_patterns(self) -> List[Dict]:
-        """Initialize semantic search patterns by generating them dynamically from API structure"""
+    def _initialize_search_patterns(self) -> list[dict[str, Any]]:
+        """Initialize semantic search patterns by generating them dynamically from API
+        structure"""
         return self._generate_dynamic_patterns()
 
-    def _calculate_semantic_score(self, query: str, pattern: Dict) -> float:
+    def _calculate_semantic_score(self, query: str, pattern: dict[str, Any]) -> float:
         """Calculate semantic similarity score between query and pattern"""
         query_words = set(re.findall(r"\b\w+\b", query.lower()))
         pattern_keywords = set(pattern["keywords"])
@@ -172,7 +173,7 @@ class MerakiApiTools:
 
         return min(weighted_score + exact_bonus, 1.0)
 
-    def _ensure_patterns_initialized(self):
+    def _ensure_patterns_initialized(self) -> None:
         """Ensure search patterns are initialized (lazy loading)"""
         if not self._patterns_initialized:
             logger.info(
@@ -182,12 +183,12 @@ class MerakiApiTools:
             self._patterns_initialized = True
             logger.info(f"Initialized {len(self._search_patterns)} semantic patterns")
 
-    def _find_best_pattern_match(self, query: str) -> Optional[Dict]:
+    def _find_best_pattern_match(self, query: str) -> dict[str, Any] | None:
         """Find the best matching pattern for the given query"""
         self._ensure_patterns_initialized()
 
         best_score = 0.0
-        best_pattern = None
+        best_pattern: dict[str, Any] | None = None
 
         for pattern in self._search_patterns:
             score = self._calculate_semantic_score(query, pattern)
@@ -203,14 +204,14 @@ class MerakiApiTools:
         self.mcp.tool()(self.execute_meraki_api_endpoint)
         self.mcp.tool()(self.get_meraki_endpoint_parameters)
 
-    def _discover_api_structure(self) -> Dict[str, List[str]]:
+    def _discover_api_structure(self) -> dict[str, list[str]]:
         """Discover all available API sections and their methods"""
         if self._api_cache:
             return self._api_cache
 
         try:
             dashboard = self.meraki_client.get_dashboard()
-            api_structure = {}
+            api_structure: dict[str, list[str]] = {}
 
             # Get all API sections
             sections = [
@@ -238,21 +239,23 @@ class MerakiApiTools:
             logger.error(f"Failed to discover API structure: {e}")
             return {}
 
-    def _get_cache_key(self, section: str, method: str, **params) -> str:
+    def _get_cache_key(self, section: str, method: str, **params: Any) -> str:
         """Generate a cache key for API responses"""
         sorted_params = sorted(params.items())
         return f"{section}.{method}:{hash(str(sorted_params))}"
 
-    def _is_cache_valid(self, cache_entry: Dict) -> bool:
+    def _is_cache_valid(self, cache_entry: dict[str, Any]) -> bool:
         """Check if cache entry is still valid"""
         return time.time() - cache_entry.get("timestamp", 0) < self._cache_ttl
 
-    async def search_meraki_api_endpoints(self, query: str) -> str:
+    def search_meraki_api_endpoints(self, query: str) -> str:
         """
-        Search and discover Meraki API endpoints using semantic similarity and natural language.
+        Search and discover Meraki API endpoints using semantic similarity and natural
+        language.
 
-        This tool uses intelligent pattern matching and semantic scoring to find the most relevant
-        API endpoints. It analyzes query intent and matches against known patterns for instant results.
+        This tool uses intelligent pattern matching and semantic scoring to find the
+        most relevant API endpoints. It analyzes query intent and matches against known
+        patterns for instant results.
 
         SEMANTIC MATCHING:
         - Organizations: "get organizations", "list orgs", "show my organizations"
@@ -266,7 +269,8 @@ class MerakiApiTools:
                 - "get my organizations" → organizations.getOrganizations
                 - "device Q123 port 4 config" → switch.getDeviceSwitchPort
                 - "network clients" → networks.getNetworkClients
-                - "firewall rules" → appliance.getNetworkApplianceFirewallL3FirewallRules
+                - "firewall rules" →
+                     appliance.getNetworkApplianceFirewallL3FirewallRules
 
         Returns:
             JSON string containing:
@@ -315,7 +319,10 @@ class MerakiApiTools:
             "query": query,
             "direct_match": direct_match,
             "matches": matches,
-            "usage": "Use execute_api_endpoint with section='<section>' and method='<method>' to call an endpoint",
+            "usage": (
+                "Use execute_api_endpoint with section='<section>' and "
+                "method='<method>' to call an endpoint"
+            ),
         }
 
         return json.dumps(result, indent=2)
@@ -326,7 +333,8 @@ class MerakiApiTools:
 
         This tool provides complete parameter documentation for API methods, including
         data types, required vs optional parameters, and default values. Use this after
-        finding endpoints with search_api_endpoints and before calling execute_api_endpoint.
+        finding endpoints with search_api_endpoints and before calling
+        execute_api_endpoint.
 
         WHEN TO USE:
         - Before making API calls to understand required parameters
@@ -335,7 +343,8 @@ class MerakiApiTools:
         - To check parameter data types for proper formatting
 
         Args:
-            section (str): API section name from search results. Must be exact match. Examples:
+            section (str): API section name from search results. Must be exact match.
+            Examples:
                 - "organizations" - for organization management endpoints
                 - "devices" - for device-specific operations
                 - "networks" - for network management
@@ -369,7 +378,11 @@ class MerakiApiTools:
                   "default": "default_value"
                 }
               },
-              "usage_example": "execute_api_endpoint(section='devices', method='getDevice', serial='Q2XX-XXXX-XXXX')"
+              "usage_example": "execute_api_endpoint(
+                    section='devices',
+                    method='getDevice',
+                    serial='Q2XX-XXXX-XXXX'
+                )"
             }
 
         PARAMETER TYPES:
@@ -411,7 +424,9 @@ class MerakiApiTools:
                 "section": section,
                 "method": method,
                 "parameters": parameters,
-                "usage_example": f"execute_api_endpoint(section='{section}', method='{method}', ...)",
+                "usage_example": (
+                    f"execute_api_endpoint(section='{section}', method='{method}', ...)"
+                ),
             }
 
             return json.dumps(result, indent=2)
@@ -431,17 +446,18 @@ class MerakiApiTools:
         self,
         section: str,
         method: str,
-        serial: Optional[str] = None,
-        portId: Optional[str] = None,
-        networkId: Optional[str] = None,
-        organizationId: Optional[str] = None,
-        kwargs: str = "{}",
-    ) -> str:
+        serial: str | None = None,
+        portId: str | None = None,
+        networkId: str | None = None,
+        organizationId: str | None = None,
+        kwargs: str | dict[str, Any] = "{}",
+    ) -> str | dict[str, Any]:
         """
         Execute any Meraki Dashboard API endpoint with dynamic parameter handling.
 
         This is the primary execution tool that calls the actual Meraki API. It handles
-        authentication, rate limiting, error handling, and response formatting automatically.
+        authentication, rate limiting, error handling, and response formatting
+        automatically.
 
         COMMON DIRECT USAGE:
         1. Get device port configuration:
@@ -453,8 +469,12 @@ class MerakiApiTools:
                               serial="Q2XX-XXXX-XXXX")
 
         3. Get network clients with additional parameters:
-           execute_api_endpoint(section="networks", method="getNetworkClients",
-                              networkId="N_12345", kwargs='{"timespan": 3600, "perPage": 50}')
+           execute_api_endpoint(
+                section="networks",
+                method="getNetworkClients",
+                networkId="N_12345",
+                kwargs='{"timespan": 3600, "perPage": 50}'
+            ),
 
         Args:
             section (str): API section name (e.g., "switch", "devices", "networks")
@@ -464,7 +484,9 @@ class MerakiApiTools:
             networkId (str, optional): Network identifier
             organizationId (str, optional): Organization identifier
             kwargs (str): JSON string containing any additional parameters
-                Examples: '{"timespan": 3600}', '{"perPage": 50, "startingAfter": "2023-01-01"}'
+                Examples:
+                    '{"timespan": 3600}'
+                    '{"perPage": 50, "startingAfter": "2023-01-01"}'
 
         Returns:
             JSON string containing API response or error details
@@ -499,7 +521,7 @@ class MerakiApiTools:
                 }
 
                 try:
-                    if kwargs and kwargs.strip():
+                    if kwargs and isinstance(kwargs, str) and kwargs.strip():
                         extra_params = json.loads(kwargs)
                         if isinstance(extra_params, dict):
                             all_params.update(extra_params)
@@ -556,7 +578,9 @@ class MerakiApiTools:
                     if v is not None and v != ""
                 ],
                 "additional_params_provided": kwargs,
-                "suggestion": "Use get_meraki_endpoint_parameters to see all required parameters",
+                "suggestion": (
+                    "Use get_meraki_endpoint_parameters to see all required parameters"
+                ),
             }
             return json.dumps(error_result, indent=2)
 
@@ -568,14 +592,18 @@ class MerakiApiTools:
                 error_result = {
                     "error": f"Section '{section}' not found",
                     "available_sections": available_sections[:10],
-                    "suggestion": "Use search_meraki_api_endpoints to find the correct section",
+                    "suggestion": (
+                        "Use search_meraki_api_endpoints to find the correct section"
+                    ),
                 }
             else:
                 available_methods = api_structure.get(section, [])
                 error_result = {
                     "error": f"Method '{method}' not found in section '{section}'",
                     "available_methods": available_methods[:20],
-                    "suggestion": "Use search_meraki_api_endpoints to find the correct method",
+                    "suggestion": (
+                        "Use search_meraki_api_endpoints to find the correct method"
+                    ),
                 }
 
             return json.dumps(error_result, indent=2)
@@ -583,7 +611,7 @@ class MerakiApiTools:
         except Exception as e:
             logger.error(f"API call failed: {e}")
 
-            error_result = {
+            error_result: dict[str, Any] = {
                 "error": f"API call failed: {str(e)}",
                 "section": section,
                 "method": method,
@@ -598,6 +626,8 @@ class MerakiApiTools:
                     if v is not None and v != ""
                 ],
             }
+
             if kwargs:
                 error_result["additional_params"] = kwargs
+
             return json.dumps(error_result, indent=2)
