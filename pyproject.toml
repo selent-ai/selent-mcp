@@ -86,12 +86,20 @@ skip-magic-trailing-comma = false
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
 
-[tool.mypy]
-ignore_missing_imports = true
-show_error_codes = true
+[tool.basedpyright]
+include = ["selent_mcp/**/*.py"]
 
-
-[[tool.mypy.overrides]]
-module = ["torch.*"]
-follow_imports = "skip"
-follow_imports_for_stubs = true
+typeCheckingMode = "recommended"
+reportAny = false
+reportArgumentType = false
+reportAttributeAccessIssue = false
+reportCallIssue = false
+reportExplicitAny = false
+reportImplicitStringConcatenation = false
+reportMissingTypeStubs = false
+reportOperatorIssue = false
+reportUnknownArgumentType = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnusedCallResult = false
+reportUnusedFunction = false
