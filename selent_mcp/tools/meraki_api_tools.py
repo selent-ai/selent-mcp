@@ -1,243 +1,81 @@
 import asyncio
 import inspect
 import json
-import logging
-import re
 import time
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
+from loguru import logger
+from qdrant_client import QdrantClient, models
 
 from selent_mcp.services.meraki_client import MerakiClient
 
-logger = logging.getLogger(__name__)
+
+def extract_non_empty_params(**kwargs: Any) -> list[str]:
+    """
+    Extract parameter names that have non-null and non-empty values.
+
+    Args:
+        **kwargs: Arbitrary keyword arguments to filter
+
+    Returns:
+        List of parameter names whose values are not None and not empty strings
+
+    Example:
+        >>> extract_non_empty_params(serial="Q2XX", portId="", networkId=None)
+        ['serial']
+    """
+    return [k for k, v in kwargs.items() if v is not None and v != ""]
 
 
 class MerakiApiTools:
-    """Dynamic tool class that can discover and execute any Meraki API endpoint"""
+    """
+    Dynamic tool class that uses semantic search to discover and execute
+    Meraki API endpoints
+    """
 
-    def __init__(self, mcp: FastMCP, meraki_client: MerakiClient, enabled: bool):
+    def __init__(
+        self,
+        mcp: FastMCP,
+        meraki_client: MerakiClient,
+        enabled: bool,
+        collection_path: str = "./data/meraki_api_collection",
+        collection_name: str = "meraki_api_collection",
+        model_name: str = "BAAI/bge-small-en-v1.5",
+    ):
         self.mcp: FastMCP = mcp
         self.meraki_client: MerakiClient = meraki_client
-        self._api_cache: dict[str, list[str]] = {}
-        self._device_cache: dict[str, dict[str, Any]] = {}
+        self.enabled: bool = enabled
+        self.collection_path: str = collection_path
+        self.collection_name: str = collection_name
+        self.model_name: str = model_name
+
+        # Response caching
         self._response_cache: dict[str, dict[str, Any]] = {}
         self._cache_ttl: int = 300
-        self._search_patterns: list[dict[str, Any]] = []
-        self._patterns_initialized: bool = False
-        self.enabled: bool = enabled
+
+        # Qdrant client (lazy loaded)
+        self._qdrant_client: QdrantClient | None = None
+
         if self.enabled:
             self._register_tools()
         else:
             logger.info("MerakiApiTools not registered (MERAKI_API_KEY not set)")
 
-    def _generate_keywords_from_method(self, section: str, method: str) -> list[str]:
-        """Generate semantic keywords from section and method names"""
-        keywords = []
+    def _get_qdrant_client(self) -> QdrantClient:
+        """Lazy load Qdrant client"""
+        if self._qdrant_client is None:
+            Path(self.collection_path).mkdir(parents=True, exist_ok=True)
+            self._qdrant_client = QdrantClient(path=self.collection_path)
 
-        keywords.append(section.lower())
-        if section == "organizations":
-            keywords.extend(["org", "orgs", "organization"])
-        elif section == "appliance":
-            keywords.extend(["mx", "security", "firewall"])
-        elif section == "switch":
-            keywords.extend(["ms", "switching", "port", "ports"])
-        elif section == "wireless":
-            keywords.extend(["mr", "wifi", "wireless", "access"])
-        elif section == "camera":
-            keywords.extend(["mv", "cameras", "video"])
-        elif section == "sensor":
-            keywords.extend(["mt", "sensors", "environmental"])
-        elif section == "networks":
-            keywords.extend(["network", "net"])
-        elif section == "devices":
-            keywords.extend(["device", "hardware"])
-
-        method_parts = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)", method)
-        method_words = [part.lower() for part in method_parts]
-        keywords.extend(method_words)
-
-        if "get" in method_words:
-            keywords.extend(["show", "list", "fetch", "retrieve"])
-        elif "update" in method_words:
-            keywords.extend(["modify", "change", "edit", "set"])
-        elif "create" in method_words:
-            keywords.extend(["add", "new", "make"])
-        elif "delete" in method_words:
-            keywords.extend(["remove", "destroy"])
-
-        if any(word in method_words for word in ["firewall", "rules"]):
-            keywords.extend(["security", "l3", "layer3", "policy"])
-        if any(word in method_words for word in ["client", "clients"]):
-            keywords.extend(["connected", "devices", "users"])
-        if any(word in method_words for word in ["port", "ports"]):
-            keywords.extend(["interface", "config", "configuration", "settings"])
-        if any(word in method_words for word in ["vpn"]):
-            keywords.extend(["tunnel", "connection", "site"])
-        if any(word in method_words for word in ["ssid"]):
-            keywords.extend(["network", "wifi", "wireless"])
-
-        return list(set(keywords))
-
-    def _calculate_method_weight(self, method: str) -> float:
-        """Calculate priority weight for a method based on common usage patterns"""
-        method_lower = method.lower()
-
-        if method in ["getOrganizations", "getDevice", "getNetworkClients"]:
-            return 1.0
-        elif "organization" in method_lower and method.startswith("get"):
-            return 0.9
-        elif "network" in method_lower and method.startswith("get"):
-            return 0.8
-        elif method.startswith("get") and "device" in method_lower:
-            return 0.8
-        elif method.startswith("get"):
-            return 0.7
-        elif method.startswith("update"):
-            return 0.6
-        elif method.startswith("create"):
-            return 0.5
-        elif method.startswith("delete"):
-            return 0.4
-        else:
-            return 0.3
-
-    def _get_method_parameters(self, section: str, method: str) -> list[str]:
-        """Get required parameters for a method using inspection"""
-        try:
-            dashboard = self.meraki_client.get_dashboard()
-            section_obj = getattr(dashboard, section)
-            method_obj = getattr(section_obj, method)
-
-            sig = inspect.signature(method_obj)
-            required_params = []
-
-            for param_name, param in sig.parameters.items():
-                if param.default == inspect.Parameter.empty and param_name != "kwargs":
-                    required_params.append(param_name)
-
-            return required_params
-        except Exception:
-            return []
-
-    def _generate_dynamic_patterns(self) -> list[dict[str, Any]]:
-        """Generate semantic patterns for ALL available API endpoints"""
-        api_structure = self._discover_api_structure()
-        patterns = []
-
-        for section, methods in api_structure.items():
-            for method in methods:
-                keywords = self._generate_keywords_from_method(section, method)
-                weight = self._calculate_method_weight(method)
-                required_params = self._get_method_parameters(section, method)
-
-                method_parts = re.findall(
-                    r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)", method
-                )
-                description = " ".join(method_parts).lower()
-
-                pattern = {
-                    "keywords": keywords,
-                    "section": section,
-                    "method": method,
-                    "description": description,
-                    "required_params": required_params,
-                    "weight": weight,
-                }
-                patterns.append(pattern)
-
-        return patterns
-
-    def _initialize_search_patterns(self) -> list[dict[str, Any]]:
-        """Initialize semantic search patterns by generating them dynamically from API
-        structure"""
-        return self._generate_dynamic_patterns()
-
-    def _calculate_semantic_score(self, query: str, pattern: dict[str, Any]) -> float:
-        """Calculate semantic similarity score between query and pattern"""
-        query_words = set(re.findall(r"\b\w+\b", query.lower()))
-        pattern_keywords = set(pattern["keywords"])
-
-        intersection = len(query_words.intersection(pattern_keywords))
-        union = len(query_words.union(pattern_keywords))
-
-        if union == 0:
-            return 0.0
-
-        jaccard_score = intersection / union
-
-        weighted_score = jaccard_score * pattern["weight"]
-
-        exact_matches = sum(1 for word in query_words if word in pattern_keywords)
-        exact_bonus = min(exact_matches * 0.1, 0.3)
-
-        return min(weighted_score + exact_bonus, 1.0)
-
-    def _ensure_patterns_initialized(self) -> None:
-        """Ensure search patterns are initialized (lazy loading)"""
-        if not self._patterns_initialized:
-            logger.info(
-                "Initializing semantic search patterns for all API endpoints..."
-            )
-            self._search_patterns = self._generate_dynamic_patterns()
-            self._patterns_initialized = True
-            logger.info(f"Initialized {len(self._search_patterns)} semantic patterns")
-
-    def _find_best_pattern_match(self, query: str) -> dict[str, Any] | None:
-        """Find the best matching pattern for the given query"""
-        self._ensure_patterns_initialized()
-
-        best_score = 0.0
-        best_pattern: dict[str, Any] | None = None
-
-        for pattern in self._search_patterns:
-            score = self._calculate_semantic_score(query, pattern)
-            if score > best_score and score > 0.3:
-                best_score = score
-                best_pattern = pattern
-
-        return best_pattern
+        return self._qdrant_client
 
     def _register_tools(self):
         """Register the dynamic tools with the MCP server"""
         self.mcp.tool()(self.search_meraki_api_endpoints)
         self.mcp.tool()(self.execute_meraki_api_endpoint)
         self.mcp.tool()(self.get_meraki_endpoint_parameters)
-
-    def _discover_api_structure(self) -> dict[str, list[str]]:
-        """Discover all available API sections and their methods"""
-        if self._api_cache:
-            return self._api_cache
-
-        try:
-            dashboard = self.meraki_client.get_dashboard()
-            api_structure: dict[str, list[str]] = {}
-
-            # Get all API sections
-            sections = [
-                attr
-                for attr in dir(dashboard)
-                if not attr.startswith("_")
-                and hasattr(getattr(dashboard, attr), "__class__")
-                and "api" in str(type(getattr(dashboard, attr))).lower()
-            ]
-
-            for section in sections:
-                section_obj = getattr(dashboard, section)
-                methods = [
-                    method
-                    for method in dir(section_obj)
-                    if not method.startswith("_")
-                    and callable(getattr(section_obj, method))
-                ]
-                api_structure[section] = methods
-
-            self._api_cache = api_structure
-            return api_structure
-
-        except Exception as e:
-            logger.error(f"Failed to discover API structure: {e}")
-            return {}
 
     def _get_cache_key(self, section: str, method: str, **params: Any) -> str:
         """Generate a cache key for API responses"""
@@ -248,84 +86,85 @@ class MerakiApiTools:
         """Check if cache entry is still valid"""
         return time.time() - cache_entry.get("timestamp", 0) < self._cache_ttl
 
-    def search_meraki_api_endpoints(self, query: str) -> str:
+    def search_meraki_api_endpoints(
+        self, query: str, limit: int = 5, min_score: float = 0.5
+    ) -> str:
         """
-        Search and discover Meraki API endpoints using semantic similarity and natural
-        language.
+        Search and discover Meraki API endpoints using semantic similarity.
 
-        This tool uses intelligent pattern matching and semantic scoring to find the
-        most relevant API endpoints. It analyzes query intent and matches against known
-        patterns for instant results.
+        This tool uses embeddings and vector similarity search to find the
+        most relevant API endpoints based on your natural language query.
 
-        SEMANTIC MATCHING:
-        - Organizations: "get organizations", "list orgs", "show my organizations"
-        - Device Status: "device info", "device details", "check device status"
-        - Port Config: "device port config", "switch port", "port configuration"
-        - Firewall Rules: "firewall rules", "security rules", "l3 firewall"
-        - Network Clients: "network clients", "connected devices", "client list"
+        Examples:
+            - "get my organizations" → organizations.getOrganizations
+            - "device port configuration" → switch.getDeviceSwitchPort
+            - "network clients" → networks.getNetworkClients
+            - "firewall rules" → getNetworkApplianceFirewallL3FirewallRules
+            - "list all devices" → organizations.getOrganizationDevices
 
         Args:
-            query (str): Natural language search term. Examples:
-                - "get my organizations" → organizations.getOrganizations
-                - "device Q123 port 4 config" → switch.getDeviceSwitchPort
-                - "network clients" → networks.getNetworkClients
-                - "firewall rules" →
-                     appliance.getNetworkApplianceFirewallL3FirewallRules
+            query (str): Natural language search term
+            limit (int): Maximum number of results to return (default: 5)
+            min_score (float): Minimum similarity score 0-1 (default: 0.5)
 
         Returns:
             JSON string containing:
             - query: The search term used
-            - direct_match: Best semantic match with confidence score
-            - matches: Fallback section matches if no direct match
+            - results: List of matching endpoints with scores
             - usage: Instructions for next steps
         """
-        # Try semantic pattern matching first
-        best_pattern = self._find_best_pattern_match(query)
+        try:
+            client = self._get_qdrant_client()
 
-        direct_match = None
-        if best_pattern:
-            direct_match = {
-                "section": best_pattern["section"],
-                "method": best_pattern["method"],
-                "description": best_pattern["description"],
-                "required_params": best_pattern["required_params"],
-                "confidence": self._calculate_semantic_score(query, best_pattern),
+            # Search using Qdrant semantic search
+            search_results = client.query_points(
+                self.collection_name,
+                query=models.Document(text=query, model=self.model_name),
+                limit=limit,
+            ).points
+
+            # Filter by minimum score and format results
+            results = []
+            for point in search_results:
+                if point.score >= min_score:
+                    payload = point.payload or {}
+                    method_data = payload.get("method", {})
+                    results.append(
+                        {
+                            "section": payload.get("section", ""),
+                            "method": method_data.get("name", ""),
+                            "description": method_data.get("description", ""),
+                            "score": round(point.score, 4),
+                        }
+                    )
+
+            result = {
+                "query": query,
+                "results": results,
+                "usage": (
+                    "Use get_meraki_endpoint_parameters(section, method) to "
+                    "see detailed parameters, then "
+                    "execute_meraki_api_endpoint(section, method, ...) to call"
+                ),
             }
 
-        matches = {}
+            return json.dumps(result, indent=2)
 
-        # Fallback to traditional search if no semantic match found
-        if not direct_match:
-            api_structure = self._discover_api_structure()
-            query_lower = query.lower()
-
-            for section, methods in api_structure.items():
-                section_matches = []
-
-                # Section name matching
-                if any(word in section.lower() for word in query_lower.split()):
-                    section_matches.extend(methods[:8])
-
-                # Method name matching
-                for method in methods:
-                    if any(word in method.lower() for word in query_lower.split()):
-                        if method not in section_matches:
-                            section_matches.append(method)
-
-                if section_matches:
-                    matches[section] = section_matches[:8]
-
-        result = {
-            "query": query,
-            "direct_match": direct_match,
-            "matches": matches,
-            "usage": (
-                "Use execute_api_endpoint with section='<section>' and "
-                "method='<method>' to call an endpoint"
-            ),
-        }
-
-        return json.dumps(result, indent=2)
+        except FileNotFoundError as e:
+            error_result = {
+                "error": str(e),
+                "suggestion": (
+                    "Run 'python selent_mcp/generate_collection.py <API_KEY>'"
+                    " to generate the collection first"
+                ),
+            }
+            return json.dumps(error_result, indent=2)
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            error_result = {
+                "error": f"Search failed: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
 
     async def get_meraki_endpoint_parameters(self, section: str, method: str) -> str:
         """
@@ -567,16 +406,12 @@ class MerakiApiTools:
                 "error": str(ve),
                 "section": section,
                 "method": method,
-                "provided_params": [
-                    k
-                    for k, v in {
-                        "serial": serial,
-                        "portId": portId,
-                        "networkId": networkId,
-                        "organizationId": organizationId,
-                    }.items()
-                    if v is not None and v != ""
-                ],
+                "provided_params": extract_non_empty_params(
+                    serial=serial,
+                    portId=portId,
+                    networkId=networkId,
+                    organizationId=organizationId,
+                ),
                 "additional_params_provided": kwargs,
                 "suggestion": (
                     "Use get_meraki_endpoint_parameters to see all required parameters"
@@ -585,27 +420,12 @@ class MerakiApiTools:
             return json.dumps(error_result, indent=2)
 
         except AttributeError:
-            api_structure = self._discover_api_structure()
-            available_sections = list(api_structure.keys())
-
-            if section not in available_sections:
-                error_result = {
-                    "error": f"Section '{section}' not found",
-                    "available_sections": available_sections[:10],
-                    "suggestion": (
-                        "Use search_meraki_api_endpoints to find the correct section"
-                    ),
-                }
-            else:
-                available_methods = api_structure.get(section, [])
-                error_result = {
-                    "error": f"Method '{method}' not found in section '{section}'",
-                    "available_methods": available_methods[:20],
-                    "suggestion": (
-                        "Use search_meraki_api_endpoints to find the correct method"
-                    ),
-                }
-
+            error_result = {
+                "error": f"Endpoint '{section}.{method}' not found",
+                "suggestion": (
+                    "Use search_meraki_api_endpoints to find the correct endpoint"
+                ),
+            }
             return json.dumps(error_result, indent=2)
 
         except Exception as e:
@@ -615,16 +435,12 @@ class MerakiApiTools:
                 "error": f"API call failed: {str(e)}",
                 "section": section,
                 "method": method,
-                "provided_params": [
-                    k
-                    for k, v in {
-                        "serial": serial,
-                        "portId": portId,
-                        "networkId": networkId,
-                        "organizationId": organizationId,
-                    }.items()
-                    if v is not None and v != ""
-                ],
+                "provided_params": extract_non_empty_params(
+                    serial=serial,
+                    portId=portId,
+                    networkId=networkId,
+                    organizationId=organizationId,
+                ),
             }
 
             if kwargs:

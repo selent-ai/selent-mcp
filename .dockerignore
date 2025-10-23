@@ -43,3 +43,8 @@ api_test_results.json
 
 # Logs
 *.log 
+
+# Data
+data/
+.vscode
+.github

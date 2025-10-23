@@ -1,8 +1,5 @@
-import logging
-
 import meraki
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class MerakiClient:

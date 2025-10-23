@@ -1,15 +1,13 @@
 import asyncio
 import json
-import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 from fastmcp import FastMCP
+from loguru import logger
 
 from selent_mcp.services.meraki_client import MerakiClient
-
-logger = logging.getLogger(__name__)
 
 
 class MerakiComplexApiTools:

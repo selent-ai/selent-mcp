@@ -1,19 +1,31 @@
-FROM python:3.12-slim
+# Install uv
+FROM python:3.12-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Set working directory
+# Change the working directory to the `app` directory
 WORKDIR /app
 
-# Install uv for fast Python package management
-RUN pip install uv
-
-# Copy dependency files and README (required by pyproject.toml)
-COPY pyproject.toml uv.lock README.md ./
-
-# Copy source code first (needed for build)
-COPY selent_mcp/ ./selent_mcp/
-
 # Install dependencies
-RUN uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project --no-editable
+
+# Copy the project into the intermediate image
+ADD . /app
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-editable
+
+RUN uv run scripts/generate_collection.py
+
+FROM python:3.12-slim
+
+# Copy the environment, but not the source code
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+
+WORKDIR /app
 
 # Set environment variables
 ENV PYTHONPATH=/app
@@ -25,4 +37,4 @@ ENV SELENT_API_BASE_URL=${SELENT_API_BASE_URL}
 EXPOSE 8000
 
 # Run the MCP server
-CMD ["uv", "run", "python", "-m", "selent_mcp.main"] 
+CMD [".venv/bin/python", "-m", "selent_mcp.main"] 
