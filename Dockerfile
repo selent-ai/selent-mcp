@@ -37,4 +37,4 @@ ENV SELENT_API_BASE_URL=${SELENT_API_BASE_URL}
 EXPOSE 8000
 
 # Run the MCP server
-CMD [".venv/bin/python", "-m", "selent_mcp.main"] 
+CMD [".venv/bin/python", "-m", "selent_mcp"]
