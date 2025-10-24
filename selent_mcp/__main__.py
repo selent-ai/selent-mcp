@@ -24,6 +24,8 @@ if __name__ == "__main__":
 
     if args.transport == "stdio":
         logger.info("Running MCP server in stdio mode")
-        mcp.run()
+        mcp.run(show_banner=False)
     else:
-        mcp.run(transport=args.transport, host=args.host, port=args.port)
+        mcp.run(
+            transport=args.transport, host=args.host, port=args.port, show_banner=False
+        )

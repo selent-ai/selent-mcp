@@ -133,7 +133,9 @@ class MerakiApiTools:
                         {
                             "section": payload.get("section", ""),
                             "method": method_data.get("name", ""),
-                            "description": method_data.get("description", ""),
+                            "description": method_data.get("description", "").split(
+                                "\n", 1
+                            )[0],
                             "score": round(point.score, 4),
                         }
                     )
