@@ -18,7 +18,6 @@ class CommonlyUsedMerakiApiTools:
     def __init__(self, mcp: FastMCP, meraki_client: MerakiClient, enabled: bool):
         self.mcp: FastMCP = mcp
         self.meraki_client: MerakiClient = meraki_client
-        self.dashboard: DashboardAPI = self.meraki_client.get_dashboard()
         self.enabled: bool = enabled
         if self.enabled:
             self._register_tools()
@@ -38,19 +37,25 @@ class CommonlyUsedMerakiApiTools:
         self.mcp.tool()(self.get_organization_uplinks_statuses)
         self.mcp.tool()(self.get_network_topology)
 
-    def get_organizations(self) -> str:
+    def get_organizations(self, key_id: str | None = None) -> str:
         """
         Get all organizations accessible by the API key.
 
         This is one of the most commonly used endpoints to discover available
         organizations before making other API calls.
 
+        Args:
+            key_id: Optional API key identifier for multi-key mode
+                Examples: "customer_a", "netmask"
+                If not specified, uses default key
+
         Returns:
             JSON string containing list of organizations with their details
             including organizationId, name, url, and other metadata.
         """
         try:
-            organizations = self.dashboard.organizations.getOrganizations()
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
+            organizations = dashboard.organizations.getOrganizations()
 
             result = {
                 "method": "getOrganizations",
@@ -64,22 +69,36 @@ class CommonlyUsedMerakiApiTools:
             logger.error(f"Failed to get organizations: {e}")
             return json.dumps({"error": "API call failed", "message": str(e)}, indent=2)
 
-    def get_organization_devices(self, organization_id: str) -> str:
+    def get_organization_devices(
+        self, organization_id: str, key_id: str | None = None
+    ) -> str:
         """
         Get all devices in an organization.
 
         This is commonly used to discover available devices across all networks
         in an organization for inventory and management purposes.
 
+        MULTI-KEY MODE:
+        If multiple API keys are configured, the system will automatically
+        select the correct key based on organization_id (if organizations
+        have been discovered). You can also explicitly specify key_id.
+
         Args:
             organization_id: The organization identifier (e.g., "123456")
+            key_id: Optional API key identifier for multi-key mode
+                Examples: "customer_a", "netmask"
+                If not specified, auto-selects based on organization_id
 
         Returns:
             JSON string containing list of all devices in the organization
             with details like serial, model, name, networkId, etc.
         """
         try:
-            devices = self.dashboard.organizations.getOrganizationDevices(
+            # Auto-select key based on organization_id (multi-key mode)
+            dashboard = self.meraki_client.get_dashboard(
+                key_id=key_id, organization_id=organization_id
+            )
+            devices = dashboard.organizations.getOrganizationDevices(
                 organizationId=organization_id
             )
 
@@ -103,22 +122,31 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_organization_networks(self, organization_id: str) -> str:
+    def get_organization_networks(
+        self, organization_id: str, key_id: str | None = None
+    ) -> str:
         """
         Get all networks in an organization.
 
         Essential for discovering available networks before making
         network-specific API calls.
 
+        MULTI-KEY MODE:
+        Auto-selects the correct API key based on organization_id.
+
         Args:
             organization_id: The organization identifier (e.g., "123456")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing list of networks with networkId, name,
             productTypes, timezone, and other network metadata.
         """
         try:
-            networks = self.dashboard.organizations.getOrganizationNetworks(
+            dashboard = self.meraki_client.get_dashboard(
+                key_id=key_id, organization_id=organization_id
+            )
+            networks = dashboard.organizations.getOrganizationNetworks(
                 organizationId=organization_id
             )
 
@@ -142,7 +170,7 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_device_status(self, serial: str) -> str:
+    def get_device_status(self, serial: str, key_id: str | None = None) -> str:
         """
         Get device status and basic information.
 
@@ -151,13 +179,15 @@ class CommonlyUsedMerakiApiTools:
 
         Args:
             serial: Device serial number (e.g., "Q2XX-XXXX-XXXX")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing device information including status,
             model, name, networkId, lan/wan IP addresses, and other details.
         """
         try:
-            device = self.dashboard.devices.getDevice(serial=serial)
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
+            device = dashboard.devices.getDevice(serial=serial)
 
             result = {"method": "getDevice", "serial": serial, "device": device}
 
@@ -171,7 +201,7 @@ class CommonlyUsedMerakiApiTools:
             )
 
     def get_network_clients(
-        self, network_id: str, timespan: int | None = 2592000
+        self, network_id: str, timespan: int | None = 2592000, key_id: str | None = None
     ) -> str:
         """
         Get clients connected to a network.
@@ -182,13 +212,15 @@ class CommonlyUsedMerakiApiTools:
         Args:
             network_id: The network identifier (e.g., "N_12345")
             timespan: Time range in seconds (max 2592000 = 30 days)
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing list of network clients with MAC addresses,
             IP assignments, device types, usage statistics, etc.
         """
         try:
-            clients = self.dashboard.networks.getNetworkClients(
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
+            clients = dashboard.networks.getNetworkClients(
                 networkId=network_id, timespan=timespan
             )
 
@@ -213,7 +245,7 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_switch_port_config(self, serial: str, port_id: str) -> str:
+    def get_switch_port_config(self, serial: str, port_id: str, key_id: str | None = None) -> str:
         """
         Get switch port configuration.
 
@@ -223,13 +255,15 @@ class CommonlyUsedMerakiApiTools:
         Args:
             serial: Switch serial number (e.g., "Q2XX-XXXX-XXXX")
             port_id: Port identifier (e.g., "1", "2", "24")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing port configuration including VLAN settings,
             access policy, power settings, and other port-specific details.
         """
         try:
-            port_config = self.dashboard.switch.getDeviceSwitchPort(
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
+            port_config = dashboard.switch.getDeviceSwitchPort(
                 serial=serial, portId=port_id
             )
 
@@ -254,7 +288,7 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_network_settings(self, network_id: str) -> str:
+    def get_network_settings(self, network_id: str, key_id: str | None = None) -> str:
         """
         Get network configuration settings.
 
@@ -263,12 +297,14 @@ class CommonlyUsedMerakiApiTools:
 
         Args:
             network_id: The network identifier (e.g., "N_12345")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing network settings and configuration details.
         """
         try:
-            settings = self.dashboard.networks.getNetworkSettings(networkId=network_id)
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
+            settings = dashboard.networks.getNetworkSettings(networkId=network_id)
 
             result = {
                 "method": "getNetworkSettings",
@@ -289,7 +325,7 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_firewall_rules(self, network_id: str) -> str:
+    def get_firewall_rules(self, network_id: str, key_id: str | None = None) -> str:
         """
         Get Layer 3 firewall rules for a network.
 
@@ -297,14 +333,16 @@ class CommonlyUsedMerakiApiTools:
 
         Args:
             network_id: The network identifier (e.g., "N_12345")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing firewall rules with policies, protocols,
             source/destination addresses, and rule priorities.
         """
         try:
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
             firewall_rules = (
-                self.dashboard.appliance.getNetworkApplianceFirewallL3FirewallRules(
+                dashboard.appliance.getNetworkApplianceFirewallL3FirewallRules(
                     networkId=network_id
                 )
             )
@@ -328,22 +366,31 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_organization_uplinks_statuses(self, organization_id: str) -> str:
+    def get_organization_uplinks_statuses(
+        self, organization_id: str, key_id: str | None = None
+    ) -> str:
         """
         Get uplink status for all devices in an organization.
 
         Essential for monitoring network connectivity and identifying
         connectivity issues across the organization.
 
+        MULTI-KEY MODE:
+        Auto-selects the correct API key based on organization_id.
+
         Args:
             organization_id: The organization identifier (e.g., "123456")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing uplink status for all organization devices
             including interface information, IP addresses, and connectivity status.
         """
         try:
-            uplinks = self.dashboard.organizations.getOrganizationUplinksStatuses(
+            dashboard = self.meraki_client.get_dashboard(
+                key_id=key_id, organization_id=organization_id
+            )
+            uplinks = dashboard.organizations.getOrganizationUplinksStatuses(
                 organizationId=organization_id
             )
 
@@ -367,7 +414,7 @@ class CommonlyUsedMerakiApiTools:
                 indent=2,
             )
 
-    def get_network_topology(self, network_id: str) -> str:
+    def get_network_topology(self, network_id: str, key_id: str | None = None) -> str:
         """
         Get network topology including device relationships and connections.
 
@@ -375,13 +422,15 @@ class CommonlyUsedMerakiApiTools:
 
         Args:
             network_id: The network identifier (e.g., "N_12345")
+            key_id: Optional API key identifier for multi-key mode
 
         Returns:
             JSON string containing network topology with device links and
             connections.
         """
         try:
-            topology = self.dashboard.networks.getNetworkTopologyLinkLayer(
+            dashboard = self.meraki_client.get_dashboard(key_id=key_id)
+            topology = dashboard.networks.getNetworkTopologyLinkLayer(
                 networkId=network_id
             )
 

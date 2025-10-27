@@ -12,6 +12,8 @@ from qdrant_client import QdrantClient, models
 from selent_mcp.services.meraki_client import MerakiClient
 
 
+SDK_INTERNAL_PARAMS = {"total_pages", "direction", "suppress_logging"}
+
 def extract_non_empty_params(**kwargs: Any) -> list[str]:
     """
     Extract parameter names that have non-null and non-empty values.
@@ -123,22 +125,57 @@ class MerakiApiTools:
                 limit=limit,
             ).points
 
-            # Filter by minimum score and format results
             results = []
+            query_lower = query.lower()
+            query_words = set(query_lower.split())
+
             for point in search_results:
                 if point.score >= min_score:
                     payload = point.payload or {}
                     method_data = payload.get("method", {})
+                    method_name = method_data.get("name", "")
+                    section_name = payload.get("section", "")
+
+                    # Calculate boosted score for exact matches
+                    boosted_score = point.score
+                    method_lower = method_name.lower()
+                    section_lower = section_name.lower()
+
+                    key_terms = query_words - {"get", "all", "list", "my", "the"}
+                    for term in key_terms:
+                        if len(term) > 3:
+                            # Check if method name is a simple get + term pattern
+                            simple_method = f"get{term}"
+                            if method_lower == simple_method or method_lower == f"get{term}s":
+                                boosted_score += 0.25  # Strong boost for simple getX methods
+
+                    # Boost if query words appear in method name
+                    for word in query_words:
+                        if len(word) > 3:  # Only boost meaningful words
+                            if word in method_lower:
+                                boosted_score += 0.08
+                            if word in section_lower:
+                                boosted_score += 0.04
+
+                    # Prioritize shorter method names (simpler methods are often more useful)
+                    if len(method_name) < 25:
+                        boosted_score += 0.03
+                    elif len(method_name) > 40:
+                        boosted_score -= 0.02 
+
                     results.append(
                         {
-                            "section": payload.get("section", ""),
-                            "method": method_data.get("name", ""),
+                            "section": section_name,
+                            "method": method_name,
                             "description": method_data.get("description", "").split(
                                 "\n", 1
                             )[0],
                             "score": round(point.score, 4),
+                            "boosted_score": round(min(boosted_score, 1.0), 4),
                         }
                     )
+
+            results.sort(key=lambda x: x["boosted_score"], reverse=True)
 
             result = {
                 "query": query,
@@ -250,16 +287,30 @@ class MerakiApiTools:
             parameters = {}
 
             for param_name, param in sig.parameters.items():
+                if param_name in SDK_INTERNAL_PARAMS:
+                    continue
+
+                param_type = "Any"
+                if param.annotation != inspect.Parameter.empty:
+                    if hasattr(param.annotation, "__name__"):
+                        param_type = param.annotation.__name__
+                    else:
+                        param_type = str(param.annotation)
+                elif param.default != inspect.Parameter.empty and param.default is not None:
+                    param_type = type(param.default).__name__
+
                 param_info = {
                     "required": param.default == inspect.Parameter.empty,
-                    "type": str(param.annotation)
-                    if param.annotation != inspect.Parameter.empty
-                    else "unknown",
+                    "type": param_type,
                 }
+
                 if param.default != inspect.Parameter.empty:
                     param_info["default"] = param.default
 
                 parameters[param_name] = param_info
+
+            required_params = [k for k, v in parameters.items() if v["required"]]
+            optional_params = [k for k, v in parameters.items() if not v["required"]]
 
             result = {
                 "section": section,
@@ -268,6 +319,24 @@ class MerakiApiTools:
                 "usage_example": (
                     f"execute_api_endpoint(section='{section}', method='{method}', ...)"
                 ),
+            }
+
+            # Add complexity warning for endpoints with 3+ required params
+            if len(required_params) >= 3:
+                result["complexity_warning"] = {
+                    "message": f"This endpoint requires {len(required_params)} parameters",
+                    "required_params": required_params,
+                    "suggestion": (
+                        "Consider using the 'parameters_guide' prompt for detailed "
+                        "guidance on providing multiple parameters"
+                    ),
+                }
+
+            # Add helpful summary
+            result["summary"] = {
+                "required_count": len(required_params),
+                "optional_count": len(optional_params),
+                "required_params": required_params,
             }
 
             return json.dumps(result, indent=2)
@@ -291,6 +360,7 @@ class MerakiApiTools:
         portId: str | None = None,
         networkId: str | None = None,
         organizationId: str | None = None,
+        key_id: str | None = None,
         kwargs: str | dict[str, Any] = "{}",
     ) -> str | dict[str, Any]:
         """
@@ -315,7 +385,22 @@ class MerakiApiTools:
                 method="getNetworkClients",
                 networkId="N_12345",
                 kwargs='{"timespan": 3600, "perPage": 50}'
-            ),
+            )
+
+        MULTI-KEY USAGE (MSP Mode):
+        4. Execute with specific API key:
+           execute_api_endpoint(
+                section="organizations",
+                method="getOrganizations",
+                key_id="customer_a"
+            )
+
+        5. Auto-select key by organization:
+           execute_api_endpoint(
+                section="networks",
+                method="getOrganizationNetworks",
+                organizationId="123456"  # System finds correct key
+            )
 
         Args:
             section (str): API section name (e.g., "switch", "devices", "networks")
@@ -324,6 +409,9 @@ class MerakiApiTools:
             portId (str, optional): Port identifier (e.g., "4", "1", "2")
             networkId (str, optional): Network identifier
             organizationId (str, optional): Organization identifier
+            key_id (str, optional): API key identifier for multi-key mode
+                Examples: "customer_a", "key_1", etc.
+                If not specified, uses default key or auto-selects by organizationId
             kwargs (str): JSON string containing any additional parameters
                 Examples:
                     '{"timespan": 3600}'
@@ -350,7 +438,10 @@ class MerakiApiTools:
                     return cache_entry["response"]
 
             def _call_api():
-                dashboard = self.meraki_client.get_dashboard()
+                # Get dashboard with key selection support
+                dashboard = self.meraki_client.get_dashboard(
+                    key_id=key_id, organization_id=organizationId
+                )
                 section_obj = getattr(dashboard, section)
                 method_obj = getattr(section_obj, method)
 

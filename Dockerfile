@@ -22,8 +22,9 @@ RUN uv run scripts/generate_collection.py
 
 FROM python:3.12-slim
 
-# Copy the environment, but not the source code
+# Copy the virtual environment and generated data
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=builder --chown=app:app /app/data /app/data
 
 WORKDIR /app
 
