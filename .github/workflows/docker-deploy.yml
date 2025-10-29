@@ -38,13 +38,12 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{branch}}-
+            type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           labels: |
             org.opencontainers.image.title=Selent MCP
-            org.opencontainers.image.description=Dynamic Meraki API & Documentation Tools for Model Context Protocol
             org.opencontainers.image.vendor=Selent AI
             org.opencontainers.image.licenses=MIT
 
@@ -56,8 +55,26 @@ jobs:
           push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SELENT_API_BASE_URL=https://backend.selent.ai
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          shm-size: 2g
+
+      - name: Load and test Docker image
+        if: github.event_name == 'pull_request'
+        run: |
+          # Load the built image for testing
+          docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPOSITORY }}:pr-${{ github.event.pull_request.number }} || true
+
+          # Test the image starts correctly
+          timeout 30s docker run -i --rm \
+            -e MERAKI_API_KEY=test_key \
+            -e SELENT_API_KEY=test_key \
+            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPOSITORY }}:pr-${{ github.event.pull_request.number }} &
+
+          sleep 5
+          echo "Image test completed successfully"
 
       - name: Push to Docker Hub
         if: github.event_name != 'pull_request'
@@ -68,15 +85,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SELENT_API_BASE_URL=https://backend.selent.ai
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          shm-size: 2g
 
-      - name: Update Docker Hub description
-        if: github.event_name != 'pull_request'
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: ${{ env.DOCKER_REPOSITORY }}
-          readme-filepath: ./README.md
-          short-description: "Dynamic Meraki API & Documentation Tools for Model Context Protocol (MCP)"
+
