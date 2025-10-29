@@ -46,7 +46,7 @@ class CommonlyUsedMerakiApiTools:
 
         Args:
             key_id: Optional API key identifier for multi-key mode
-                Examples: "customer_a", "netmask"
+                Examples: "customer_a", "organization_x`"
                 If not specified, uses default key
 
         Returns:
@@ -86,7 +86,7 @@ class CommonlyUsedMerakiApiTools:
         Args:
             organization_id: The organization identifier (e.g., "123456")
             key_id: Optional API key identifier for multi-key mode
-                Examples: "customer_a", "netmask"
+                Examples: "customer_a", "organization_x"
                 If not specified, auto-selects based on organization_id
 
         Returns:

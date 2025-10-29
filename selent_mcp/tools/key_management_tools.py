@@ -1,13 +1,3 @@
-"""
-Tools for managing multiple Meraki API keys in MSP mode.
-
-These tools allow users to:
-- List available API keys
-- Get organizations for specific keys
-- Set default key for session
-- Discover organizations across all keys
-"""
-
 import json
 
 from fastmcp import FastMCP
@@ -34,14 +24,11 @@ class KeyManagementTools:
         self.mcp: FastMCP = mcp
         self.meraki_client: MerakiClient = meraki_client
 
-        # Only register if multi-key mode is active
         if self.meraki_client.is_multi_key():
             self._register_tools()
             logger.info("KeyManagementTools registered (multi-key mode detected)")
         else:
-            logger.info(
-                "KeyManagementTools not registered (single-key mode)"
-            )
+            logger.info("KeyManagementTools not registered (single-key mode)")
 
     def _register_tools(self):
         """Register all key management tools with the MCP server"""
@@ -147,10 +134,8 @@ class KeyManagementTools:
             key_info = multi_client.get_key_info(key_id)
 
             return json.dumps(key_info, indent=2)
-
         except ValueError as e:
-            # Key not found
-            available_keys = multi_client.list_keys()
+            available_keys = self.meraki_client.multi_client.list_keys()
             return json.dumps(
                 {
                     "error": str(e),
@@ -200,16 +185,13 @@ class KeyManagementTools:
                 "success": True,
                 "message": f"Default key set to: {key_id}",
                 "key_name": multi_client.key_names[key_id],
-                "note": (
-                    "All subsequent API calls without key_id will use this key"
-                ),
+                "note": ("All subsequent API calls without key_id will use this key"),
             }
 
             return json.dumps(result, indent=2)
 
         except ValueError as e:
-            # Key not found
-            available_keys = multi_client.list_keys()
+            available_keys = self.meraki_client.multi_client.list_keys()
             return json.dumps(
                 {
                     "error": str(e),
@@ -299,7 +281,7 @@ class KeyManagementTools:
         Find organization(s) by name across all API keys.
 
         This tool helps resolve organization names to IDs and keys, enabling
-        natural language queries like "get devices for Netmask S.A.S."
+        natural language queries like "get devices for organization X"
 
         USE THIS WHEN:
         - User mentions an organization by name (not ID)
@@ -309,20 +291,20 @@ class KeyManagementTools:
 
         Args:
             name: Organization name or partial name to search for
-                Examples: "Netmask", "Sebastian Inc", "Acme Corp"
+                Examples: "Organization X", "Organization Y", "Organization Z"
             fuzzy: If True, performs case-insensitive partial matching.
                 If False, requires exact match (default: True)
 
         Returns:
             JSON string with matching organizations:
             {
-                "query": "Netmask",
+                "query": "Organization X",
                 "matches": [
                     {
                         "id": "236620",
-                        "name": "Netmask S.A.S.",
-                        "key_id": "netmask",
-                        "key_name": "netmask",
+                        "name": "Organization X",
+                        "key_id": "organization_x",
+                        "key_name": "organization_x",
                         "url": "https://..."
                     }
                 ],
@@ -331,30 +313,29 @@ class KeyManagementTools:
 
         Example Usage:
             # Find by exact name
-            find_organization_by_name(name="Netmask S.A.S.")
+            find_organization_by_name(name="Organization X")
 
             # Find by partial name
-            find_organization_by_name(name="Netmask")
+            find_organization_by_name(name="Organization X")
 
             # Case-insensitive search
-            find_organization_by_name(name="sebastian")
+            find_organization_by_name(name="organization x")
 
         WORKFLOW EXAMPLE:
-            User: "Get devices for Netmask S.A.S."
+            User: "Get devices for Organization X"
 
-            Step 1: find_organization_by_name(name="Netmask")
-            → Returns: org_id="236620", key_id="netmask"
+            Step 1: find_organization_by_name(name="Organization X")
+            → Returns: org_id="236620", key_id="organization_x"
 
             Step 2: execute_meraki_api_endpoint(
                         section="organizations",
                         method="getOrganizationDevices",
-                        organizationId="236620"  # Auto-selects netmask key
+                        organizationId="236620"  # Auto-selects organization_x key
                     )
         """
         try:
             multi_client = self.meraki_client.multi_client
 
-            # Ensure organizations are discovered
             if not multi_client.org_to_key_map:
                 logger.info("Organizations not cached, discovering...")
                 multi_client.discover_all_organizations()
@@ -362,12 +343,10 @@ class KeyManagementTools:
             matches = []
             search_name = name.lower() if fuzzy else name
 
-            # Search through all cached organizations
             for key_id, orgs in multi_client.organizations_cache.items():
                 for org in orgs:
                     org_name = org.get("name", "")
 
-                    # Check for match
                     is_match = False
                     if fuzzy:
                         is_match = search_name in org_name.lower()

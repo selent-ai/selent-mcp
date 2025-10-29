@@ -13,7 +13,7 @@ def register_prompts(mcp: FastMCP) -> None:
         """
         CRITICAL startup guide for multi-key mode.
 
-        When multiple API keys are detected, Claude should ALWAYS run
+        When multiple API keys are detected, LLM should ALWAYS run
         discover_all_organizations() early in the conversation to enable
         automatic key selection by organization context.
         """
@@ -35,11 +35,11 @@ This command:
 
 ## Why This Matters
 
-Without discovery, when a user says "Get devices for Netmask S.A.S.", you won't know
+Without discovery, when a user says "Get devices for Organization X", you won't know
 which API key owns that organization. You'll get 404 errors or use the wrong key.
 
 WITH discovery, the system automatically:
-- Maps "Netmask S.A.S." (org ID: 236620) → "netmask" key
+- Maps "Organization X" (org ID: 236620) → "key_id" key
 - Selects the correct key when organizationId is provided
 - Handles cross-customer queries seamlessly
 
@@ -62,14 +62,14 @@ When the conversation starts and you detect multi-key mode:
    execute_meraki_api_endpoint(
        section='organizations',
        method='getOrganizationDevices',
-       organizationId='236620'  # Auto-selects 'netmask' key
+       organizationId='236620'  # Auto-selects 'key_id' key
    )
    ```
 
 ## User Intent Recognition
 
 When users mention organization names or ask about specific customers:
-- "Get devices in Netmask S.A.S." → Look up org ID → Auto-select key
+- "Get devices in Organization X" → Look up org ID → Auto-select key
 - "Show me Sebastian Inc. networks" → Look up org ID → Auto-select key
 - "What devices does customer X have?" → Use their specific key
 
@@ -81,9 +81,9 @@ Assistant: [runs list_api_keys() to see multi-key mode]
 Assistant: [runs discover_all_organizations() to enable smart selection]
 Assistant: [runs execute_meraki_api_endpoint with appropriate keys]
 
-User: "Get all devices in Netmask S.A.S."
-Assistant: [knows org 236620 belongs to 'netmask' key from discovery]
-Assistant: [executes with organizationId='236620', auto-selects netmask key]
+User: "Get all devices in Organization X"
+Assistant: [knows org 236620 belongs to 'key_id' key from discovery]
+Assistant: [executes with organizationId='236620', auto-selects key_id key]
 ```
 
 ## Key Points
@@ -96,9 +96,7 @@ Assistant: [executes with organizationId='236620', auto-selects netmask key]
 ALWAYS discover organizations early when multiple keys are configured!
 """
 
-    @mcp.prompt(
-        description="Common parameter formats and examples for Meraki API"
-    )
+    @mcp.prompt(description="Common parameter formats and examples for Meraki API")
     def parameter_examples_guide() -> str:
         """
         Provides format examples for common Meraki API parameters.
@@ -276,7 +274,7 @@ execute_meraki_api_endpoint(
             "    serial='...',  # if needed",
             "    networkId='...',  # if needed",
             "    organizationId='...',  # if needed",
-            "    kwargs='{\"additional\": \"parameters\"}'  # for other params",
+            '    kwargs=\'{"additional": "parameters"}\'  # for other params',
             ")",
             "```",
             "",
@@ -533,9 +531,7 @@ execute_meraki_api_endpoint(
 Would you like me to execute this endpoint now? Please provide the required parameters.
 """
 
-    @mcp.prompt(
-        description="Troubleshooting guide for common API execution errors"
-    )
+    @mcp.prompt(description="Troubleshooting guide for common API execution errors")
     def troubleshooting_guide() -> str:
         """
         Provides solutions for common errors when executing Meraki API endpoints.
@@ -811,162 +807,4 @@ The system resolves which API key to use in this order:
 2. **Organization ID** - If you provide `organizationId` and orgs are cached
 3. **Default key** - The default key set via `set_default_key()`
 4. **First key** - The first key in the configuration
-
-## Common Workflows
-
-### Workflow 1: Check Device for Specific Customer
-
-```
-# 1. See available customers
-list_api_keys()
-
-# 2. Get device status for customer_a
-execute_meraki_api_endpoint(
-    section='devices',
-    method='getDevice',
-    serial='Q2XX-XXXX-XXXX',
-    key_id='customer_a'
-)
-```
-
-### Workflow 2: Cross-Customer Query
-
-```
-# 1. Discover all organizations
-discover_all_organizations()
-
-# 2. Query specific org (auto-selects right key)
-execute_meraki_api_endpoint(
-    section='networks',
-    method='getOrganizationNetworks',
-    organizationId='123456'  # From any customer
-)
-```
-
-### Workflow 3: Batch Operations for One Customer
-
-```
-# 1. Set customer as default
-set_default_key(key_id='customer_b')
-
-# 2. Get their organizations
-execute_meraki_api_endpoint(
-    section='organizations',
-    method='getOrganizations'
-)
-
-# 3. Get devices (uses customer_b key)
-execute_meraki_api_endpoint(
-    section='devices',
-    method='getOrganizationDevices',
-    organizationId='789012'
-)
-
-# 4. Get network clients (still uses customer_b)
-execute_meraki_api_endpoint(
-    section='networks',
-    method='getNetworkClients',
-    networkId='N_123456',
-    kwargs='{"timespan": 3600}'
-)
-```
-
-## Available Key Management Tools
-
-| Tool | Purpose |
-|------|---------|
-| `list_api_keys()` | List all configured keys |
-| `get_key_organizations(key_id)` | Get orgs for specific key |
-| `set_default_key(key_id)` | Change default key |
-| `discover_all_organizations()` | Cache all organizations |
-
-## Best Practices
-
-1. **Always discover organizations first** for new setups
-   - Enables auto-selection
-   - Populates cache for faster queries
-
-2. **Use named keys** in configuration
-   - `customer_a:key123` better than `key123`
-   - Makes logs and errors more readable
-
-3. **Set default for batch work**
-   - Avoid repeating `key_id` on every call
-   - Cleaner for extended customer work
-
-4. **Verify access before operations**
-   - Use `get_key_organizations()` to confirm access
-   - Prevents confusing errors
-
-5. **Handle errors gracefully**
-   - Keys may have different permissions
-   - Organizations may not exist for all keys
-
-## Error Handling
-
-### Error: "API key 'customer_x' not found"
-
-**Solution:** Check available keys with `list_api_keys()`
-
-### Error: "No API key found with access to organization: 123456"
-
-**Solutions:**
-- Run `discover_all_organizations()` to populate cache
-- Explicitly specify `key_id` instead of relying on auto-selection
-- Verify organization ID is correct
-
-### Error: "No API keys available"
-
-**Solution:** Check `MERAKI_API_KEY` environment variable is set
-
-## Docker Configuration
-
-### Single Key (Existing)
-```bash
-docker run \
-  -e MERAKI_API_KEY="single_key" \
-  -i --rm selentai/selent-mcp:latest
-```
-
-### Multiple Keys (New)
-```bash
-docker run \
-  -e MERAKI_API_KEY="customer_a:key1,customer_b:key2" \
-  -i --rm selentai/selent-mcp:latest
-```
-
-### Claude Desktop Configuration
-
-```json
-{
-  "mcpServers": {
-    "Selent MCP": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-e", "MERAKI_API_KEY=customer_a:key1,customer_b:key2",
-        "selentai/selent-mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-## Security Notes
-
-- API keys are never exposed in tool outputs
-- Each key is isolated with independent rate limiting
-- Keys are only loaded when needed (lazy loading)
-- Logs include key_id for audit trails
-
-## Summary
-
-Multi-key mode enables MSPs to:
-- ✅ Manage multiple customers from one MCP instance
-- ✅ Auto-select keys based on organization context
-- ✅ Set defaults for extended customer work
-- ✅ Query across all customers efficiently
-- ✅ Maintain audit trails per key
-
-All existing single-key functionality remains unchanged for backward compatibility.
 """

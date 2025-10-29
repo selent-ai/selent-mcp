@@ -146,3 +146,45 @@ class SelentServiceClient:
             json={"compliance_type": compliance_type, "network_id": network_id},
         )
         return self._handle_response(response)
+
+    def get_licensing_expirations(
+        self,
+        meraki_organization_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Get licensing expiration information.
+
+        Args:
+            meraki_organization_id: Optional Meraki org ID. If provided, returns
+                licensing for that org only. If None, returns all orgs.
+
+        Returns:
+            Dict containing licensing expiration report
+        """
+        client = self._get_client()
+        params: dict[str, Any] = {}
+        if meraki_organization_id:
+            params["meraki_organization_id"] = meraki_organization_id
+        response = client.get("/mcp/licensing/expirations", params=params)
+        return self._handle_response(response)
+
+    def get_organization_licensing_summary(
+        self, meraki_organization_id: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Get detailed licensing information.
+
+        Args:
+            meraki_organization_id: Optional Meraki org ID. If provided, returns
+                summary for that org only. If None, returns all orgs.
+
+        Returns:
+            Dict with detailed licensing information
+        """
+        client = self._get_client()
+        params: dict[str, Any] = {}
+        if meraki_organization_id:
+            params["meraki_organization_id"] = meraki_organization_id
+
+        response = client.get("/mcp/licensing/summary", params=params)
+        return self._handle_response(response)

@@ -36,7 +36,7 @@ class SelentApiTools:
         try:
             response = schema_class(**kwargs)
             return response.model_dump_json(indent=2)
-        except (ValueError, TypeError, AttributeError) as e:
+        except Exception as e:
             error_response = SelentError(
                 message=f"Internal error formatting response: {str(e)}",
                 example="",
@@ -53,6 +53,8 @@ class SelentApiTools:
         self.mcp.tool()(self.selent_get_restore_status)
         self.mcp.tool()(self.selent_get_compliance_types)
         self.mcp.tool()(self.selent_run_compliance_check)
+        self.mcp.tool()(self.selent_get_licensing_expirations)
+        self.mcp.tool()(self.selent_get_organization_licensing_summary)
 
     def selent_backup(self) -> str:
         """
@@ -368,11 +370,10 @@ class SelentApiTools:
         elif current_status == "SUCCESS":
             interpretation = {
                 "message": (
-                    f"{component_type.title()} {component_id} " f"restored successfully"
+                    f"{component_type.title()} {component_id} restored successfully"
                 ),
                 "summary": (
-                    f"Restore operation completed for {component_type} "
-                    f"{component_id}"
+                    f"Restore operation completed for {component_type} {component_id}"
                 ),
                 "next_steps": [
                     "Verify the component configuration in Dashboard",
@@ -394,7 +395,7 @@ class SelentApiTools:
             components = structure.get("components", [])
             interpretation = {
                 "message": (
-                    f"Restore of {component_type} {component_id} " f"encountered errors"
+                    f"Restore of {component_type} {component_id} encountered errors"
                 ),
                 "action": "Check component-level status for details",
                 "component_status": [],
@@ -425,7 +426,7 @@ class SelentApiTools:
             backup_id=backup_id,
             progress_details=structure,
             execution_time=(
-                f"{structure.get('execution_time_seconds', 0):.1f} " f"seconds"
+                f"{structure.get('execution_time_seconds', 0):.1f} seconds"
             ),
             interpretation=interpretation,
         )
@@ -455,6 +456,101 @@ class SelentApiTools:
             return self._format_response(
                 SelentError,
                 message=result.get("message", "Failed to run compliance check"),
+            )
+
+        return result
+
+    def selent_get_licensing_expirations(
+        self,
+        meraki_organization_id: str = "",
+    ) -> str | dict[str, Any]:
+        """
+        Get licensing expiration information.
+
+        TWO MODES:
+        1. With meraki_organization_id: Returns licensing for THAT specific organization
+        2. Without meraki_organization_id: Returns licensing for ALL organizations
+
+        This tool retrieves licensing information from the Selent backend API,
+        which automatically:
+        - Detects licensing model (subscription, co-term, or per-device)
+        - Extracts expiration dates and license counts
+        - Formats as a structured report for easy viewing
+
+        USE THIS WHEN:
+        - User asks "show me all license expirations" (leave meraki_organization_id empty)
+        - User asks "show me licensing for org X" (provide meraki_organization_id)
+        - User wants to identify upcoming renewals
+        - User needs a licensing audit
+
+        Args:
+            meraki_organization_id: Optional Meraki organization ID.
+                Leave empty ("") to get ALL organizations.
+                Provide org ID to get specific organization only.
+            include_expired: Include already-expired licenses in results (default: True)
+            days_threshold: Highlight licenses expiring within N days (default: 90)
+
+        Returns:
+            JSON containing licensing expiration report
+
+        Examples:
+            # Get all organizations
+            selent_get_licensing_expirations("", True, 90)
+
+            # Get specific organization
+            selent_get_licensing_expirations("123456", True, 90)
+        """
+        result = self.selent_client.get_licensing_expirations(
+            meraki_organization_id=meraki_organization_id or None,
+        )
+
+        if result.get("error"):
+            return self._format_response(
+                SelentError,
+                message=result.get("message", "Failed to get licensing expirations"),
+            )
+
+        return result
+
+    def selent_get_organization_licensing_summary(
+        self, meraki_organization_id: str = ""
+    ) -> str | dict[str, Any]:
+        """
+        Get detailed licensing information.
+
+        TWO MODES:
+        1. With meraki_organization_id: Returns summary for THAT specific organization
+        2. Without meraki_organization_id: Returns summaries for ALL organizations
+
+        Provides comprehensive licensing details including:
+        - Licensing model (subscription, co-term, or per-device)
+        - All licenses with expiration dates
+        - License counts and status
+        - Device counts per license type (if available)
+
+        Args:
+            meraki_organization_id: Optional Meraki organization ID.
+                Leave empty ("") to get ALL organizations.
+                Provide org ID to get specific organization only.
+
+        Returns:
+            JSON with detailed licensing information
+
+        Examples:
+            # Get all organizations
+            selent_get_organization_licensing_summary("")
+
+            # Get specific organization
+            selent_get_organization_licensing_summary("123456")
+        """
+        result = self.selent_client.get_organization_licensing_summary(
+            meraki_organization_id=meraki_organization_id or None
+        )
+
+        if result.get("error"):
+            return self._format_response(
+                SelentError,
+                message=result.get("message", "Failed to get licensing summary"),
             )
 
         return result
