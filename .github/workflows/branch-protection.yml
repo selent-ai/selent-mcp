@@ -13,6 +13,15 @@ jobs:
           # Check repository permissions instead of org membership
           # (default GITHUB_TOKEN doesn't have org:read permissions)
 
+          CURRENT_USER="${{ github.actor }}"
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+
+          echo "Repository: $REPO_OWNER/$REPO_NAME"
+          echo "Current user: $CURRENT_USER"
+          echo "PR author: ${{ github.event.pull_request.user.login }}"
+          echo ""
+
           # Check if user has write access to the repository
           RESPONSE=$(gh api repos/$REPO_OWNER/$REPO_NAME/collaborators/$CURRENT_USER/permission || echo '{"permission": "none"}')
           PERMISSION=$(echo "$RESPONSE" | jq -r '.permission')
