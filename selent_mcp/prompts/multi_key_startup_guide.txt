@@ -1,0 +1,77 @@
+# Multi-Key Mode Detected - Quick Start
+
+## ⚠️ IMPORTANT: Run Discovery First
+
+When you detect multiple API keys are configured (use `list_api_keys()` to check),
+you MUST run organization discovery to enable intelligent key selection:
+
+```
+discover_all_organizations()
+```
+
+This command:
+- Discovers all organizations for each API key
+- Builds a map of organization ID → API key
+- Enables automatic key selection when users mention organizations
+
+## Why This Matters
+
+Without discovery, when a user says "Get devices for Organization X", you won't know
+which API key owns that organization. You'll get 404 errors or use the wrong key.
+
+WITH discovery, the system automatically:
+- Maps "Organization X" (org ID: 236620) → "key_id" key
+- Selects the correct key when organizationId is provided
+- Handles cross-customer queries seamlessly
+
+## Recommended Startup Flow
+
+When the conversation starts and you detect multi-key mode:
+
+1. **List available keys:**
+   ```
+   list_api_keys()
+   ```
+
+2. **Discover all organizations:**
+   ```
+   discover_all_organizations()
+   ```
+
+3. **Now you can use organization context naturally:**
+   ```
+   execute_meraki_api_endpoint(
+       section='organizations',
+       method='getOrganizationDevices',
+       organizationId='236620'  # Auto-selects 'key_id' key
+   )
+   ```
+
+## User Intent Recognition
+
+When users mention organization names or ask about specific customers:
+- "Get devices in Organization X" → Look up org ID → Auto-select key
+- "Show me Sebastian Inc. networks" → Look up org ID → Auto-select key
+- "What devices does customer X have?" → Use their specific key
+
+## Example Session
+
+```
+User: "Get all organizations"
+Assistant: [runs list_api_keys() to see multi-key mode]
+Assistant: [runs discover_all_organizations() to enable smart selection]
+Assistant: [runs execute_meraki_api_endpoint with appropriate keys]
+
+User: "Get all devices in Organization X"
+Assistant: [knows org 236620 belongs to 'key_id' key from discovery]
+Assistant: [executes with organizationId='236620', auto-selects key_id key]
+```
+
+## Key Points
+
+- Discovery takes 5-10 seconds but only runs once
+- After discovery, key selection is automatic and instant
+- Without discovery, you must manually specify key_id on every call
+- Discovery enables natural language organization references
+
+ALWAYS discover organizations early when multiple keys are configured!

@@ -1,0 +1,114 @@
+# Understanding Parameters for {section}.{method}
+
+## How to Get Parameter Details
+
+Use this command to see all parameters:
+
+```
+get_meraki_endpoint_parameters(section="{section}", method="{method}")
+```
+
+## Understanding the Response
+
+The response will show each parameter with:
+
+### Required Parameters
+These MUST be provided or the API call will fail.
+```json
+{{
+  "serial": {{
+    "required": true,
+    "type": "<class 'str'>",
+    "description": "Device serial number"
+  }}
+}}
+```
+
+### Optional Parameters
+These can be omitted - they have default values.
+```json
+{{
+  "perPage": {{
+    "required": false,
+    "type": "<class 'int'>",
+    "default": 100
+  }}
+}}
+```
+
+## Common Parameter Types
+
+**str (string)**: Text values
+- Device serials: "Q2XX-XXXX-XXXX"
+- Network IDs: "L_123456789"
+- Organization IDs: "123456"
+- Names and descriptions: "My Device"
+
+**int (integer)**: Numeric values
+- Timespan: 3600 (seconds)
+- Port numbers: 8080
+- Page size: 50
+
+**bool (boolean)**: True/False values
+- enabled: true
+- disableRemoteStatusPage: false
+
+**list**: Arrays of values
+- tags: ["tag1", "tag2"]
+- allowedUrls: ["https://example.com"]
+
+**dict**: JSON objects
+- settings: JSON_DICT_PLACEHOLDER
+
+## How to Provide Parameters
+
+### Direct Parameters (Most Common)
+For frequently used parameters, pass them directly:
+
+```python
+execute_meraki_api_endpoint(
+    section="{section}",
+    method="{method}",
+    serial="Q2XX-XXXX-XXXX",          # if needed
+    networkId="L_123456789",          # if needed
+    organizationId="123456",          # if needed
+    portId="4"                        # if needed (for switch ports)
+)
+```
+
+### Additional Parameters (Via kwargs)
+For other parameters, use the kwargs field with JSON:
+
+```python
+execute_meraki_api_endpoint(
+    section="{section}",
+    method="{method}",
+    networkId="L_123456789",
+    kwargs='JSON_PLACEHOLDER'
+)
+```
+
+## Common Patterns
+
+**For GET operations (retrieving data):**
+- Usually only require ID parameters (serial, networkId, etc.)
+- May have optional filtering parameters (timespan, perPage)
+
+**For UPDATE operations (modifying settings):**
+- Require ID parameter to identify the resource
+- Require configuration parameters in kwargs
+- Example: Update switch port settings
+
+**For CREATE operations (creating new resources):**
+- Usually require parent ID (organizationId, networkId)
+- Require configuration for the new resource in kwargs
+
+## Tips
+
+1. Always check which parameters are required vs optional
+2. For complex objects, construct the JSON carefully in kwargs
+3. String values in JSON must be quoted: "value"
+4. Numbers and booleans should NOT be quoted: 100, true
+5. If unsure about format, start with required params only
+
+Would you like me to execute this endpoint now? Please provide the required parameters.

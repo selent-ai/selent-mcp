@@ -1,0 +1,79 @@
+# Meraki API Workflow for: {task}
+
+I'll help you accomplish this task using the Meraki API. Here's the recommended workflow:
+
+## Step 1: Search for Relevant Endpoints
+
+First, I'll search for API endpoints related to '{task}':
+
+```
+search_meraki_api_endpoints(query="{task}", limit=5)
+```
+
+This will return the most relevant API methods with their:
+- Section (e.g., 'devices', 'networks', 'organizations')
+- Method name (e.g., 'getDevice', 'getNetworkClients')
+- Description (what the endpoint does)
+- Relevance score (how well it matches your query)
+
+## Step 2: Get Parameter Details
+
+Once I identify the right endpoint, I'll get its parameter requirements:
+
+```
+get_meraki_endpoint_parameters(section='<section>', method='<method>')
+```
+
+This shows:
+- Required parameters (must be provided)
+- Optional parameters (can be omitted)
+- Parameter types (str, int, bool, list, dict)
+- Default values for optional parameters
+
+## Step 3: Execute the API Call
+
+Finally, I'll execute the endpoint with the appropriate parameters:
+
+```
+execute_meraki_api_endpoint(
+    section='<section>',
+    method='<method>',
+    serial='...',  # if needed
+    networkId='...',  # if needed
+    organizationId='...',  # if needed
+    kwargs='ADDITIONAL_PARAMS_PLACEHOLDER'  # for other params
+)
+```
+
+## Common Patterns
+
+**For device-specific operations:**
+- Provide `serial` parameter (e.g., 'Q2XX-XXXX-XXXX')
+- May also need `portId` for switch ports
+
+**For network-level operations:**
+- Provide `networkId` parameter (e.g., 'L_123456789')
+
+**For organization-wide operations:**
+- Provide `organizationId` parameter
+- Or first get organizations with 'getOrganizations'
+
+**For additional parameters:**
+- Use the `kwargs` field with JSON string
+- Example: kwargs='EXAMPLE_PARAMS_PLACEHOLDER'
+
+## Tips for Better Results
+
+1. **Use natural language in searches:**
+   - "get device status" works better than just "device"
+   - "switch port configuration" is clearer than "port"
+
+2. **Check parameter requirements carefully:**
+   - Missing required parameters will cause errors
+   - Use get_meraki_endpoint_parameters() to verify
+
+3. **Handle IDs properly:**
+   - If user doesn't provide IDs, get them first
+   - Example: Get organizationId before querying org resources
+
+Let me now proceed with these steps to help you accomplish your task.
