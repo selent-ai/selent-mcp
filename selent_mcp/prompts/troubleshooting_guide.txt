@@ -1,0 +1,139 @@
+# Troubleshooting Meraki API Calls
+
+## Common Errors and Solutions
+
+### 1. Missing Required Parameters
+
+**Error:**
+```json
+{
+  "error": "Missing required parameters: networkId",
+  "suggestion": "Use get_meraki_endpoint_parameters to see all required parameters"
+}
+```
+
+**Solution:**
+- Run `get_meraki_endpoint_parameters(section, method)` first
+- Check which parameters have `"required": true`
+- Provide all required parameters in the execute call
+
+### 2. Endpoint Not Found
+
+**Error:**
+```json
+{
+  "error": "Endpoint 'devices.getDeviceStatus' not found",
+  "suggestion": "Use search_meraki_api_endpoints to find the correct endpoint"
+}
+```
+
+**Solution:**
+- The method name might be wrong
+- Use `search_meraki_api_endpoints(query="your search")` to find correct name
+- Copy the exact section and method from search results
+
+### 3. Invalid Parameter Format
+
+**Error:**
+```json
+{
+  "error": "API call failed: Invalid parameter format"
+}
+```
+
+**Solution:**
+- Check parameter types with `get_meraki_endpoint_parameters()`
+- Ensure JSON in kwargs is properly formatted
+- Common issues:
+  - Missing quotes around strings: "value" not value
+  - Extra/missing commas in JSON
+  - Incorrect nesting of objects
+
+### 4. Authentication Errors
+
+**Error:**
+```
+{
+  "error": "401 Unauthorized"
+}
+```
+
+**Solution:**
+- API key might be invalid or expired
+- Check MERAKI_API_KEY environment variable
+- Verify API key has necessary permissions for this operation
+
+### 5. Resource Not Found
+
+**Error:**
+```
+{
+  "error": "404 Not Found"
+}
+```
+
+**Solution:**
+- The ID you provided doesn't exist
+- Verify serial numbers, network IDs, organization IDs
+- Use list/get operations to find valid IDs first
+
+### 6. Rate Limiting
+
+**Error:**
+```
+{
+  "error": "429 Too Many Requests"
+}
+```
+
+**Solution:**
+- You've hit Meraki's API rate limit
+- Wait a moment before retrying
+- The MCP server has built-in rate limit handling
+
+### 7. Insufficient Permissions
+
+**Error:**
+```
+{
+  "error": "403 Forbidden"
+}
+```
+
+**Solution:**
+- Your API key doesn't have permission for this operation
+- Check if you have the right access level in the Meraki Dashboard
+- Some operations require full organization admin access
+
+## Debugging Workflow
+
+1. **Verify the endpoint exists:**
+   ```
+   search_meraki_api_endpoints(query="your query")
+   ```
+
+2. **Check parameter requirements:**
+   ```
+   get_meraki_endpoint_parameters(section="...", method="...")
+   ```
+
+3. **Start with minimal parameters:**
+   - Provide only required parameters first
+   - Add optional parameters one at a time
+
+4. **Validate IDs:**
+   - Ensure serial numbers, network IDs are correct
+   - Use getOrganizations, getNetworks, etc. to get valid IDs
+
+5. **Check JSON formatting:**
+   - Use a JSON validator for complex kwargs
+   - Test with simple parameters first
+
+## Getting Help
+
+If you continue having issues:
+1. Share the exact error message
+2. Show the full command you're trying to run
+3. Confirm which parameters you're providing
+
+I'll help you diagnose and fix the issue!

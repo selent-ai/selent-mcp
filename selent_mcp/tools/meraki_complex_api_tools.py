@@ -1,30 +1,29 @@
 import asyncio
 import json
-import logging
 from collections import defaultdict
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Callable
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
+from loguru import logger
 
 from selent_mcp.services.meraki_client import MerakiClient
 
-logger = logging.getLogger(__name__)
-
 
 class MerakiComplexApiTools:
-    """Complex tool class that combines multiple Meraki API calls to provide advanced analysis and insights"""
+    """Complex tool class that combines multiple Meraki API calls to provide advanced
+    analysis and insights"""
 
     def __init__(self, mcp: FastMCP, meraki_client: MerakiClient, enabled: bool):
-        self.mcp = mcp
-        self.meraki_client = meraki_client
-        self.enabled = enabled
+        self.mcp: FastMCP = mcp
+        self.meraki_client: MerakiClient = meraki_client
+        self.enabled: bool = enabled
         if self.enabled:
             self._register_tools()
         else:
             logger.info("MerakiComplexApiTools not registered (MERAKI_API_KEY not set)")
 
-    def _register_tools(self):
+    def _register_tools(self) -> None:
         """Register the complex tools with the MCP server"""
         self.mcp.tool()(self.analyze_network_topology)
         self.mcp.tool()(self.analyze_device_health)
@@ -39,7 +38,8 @@ class MerakiComplexApiTools:
         self, network_id: str, include_clients: bool = False
     ) -> str:
         """
-        Analyze complete network topology including device relationships, VLANs, and connections.
+        Analyze complete network topology including device relationships, VLANs, and
+        connections.
 
         This tool performs comprehensive topology analysis by:
         1. Discovering all devices in the network
@@ -99,12 +99,10 @@ class MerakiComplexApiTools:
                     await self._analyze_switch_topology(device, device_detail, topology)
                 elif device_detail["type"] == "appliance":
                     await self._analyze_appliance_topology(
-                        device, device_detail, topology, network_id
+                        device, device_detail, network_id
                     )
                 elif device_detail["type"] == "wireless":
-                    await self._analyze_wireless_topology(
-                        device, device_detail, topology
-                    )
+                    await self._analyze_wireless_topology(device, device_detail)
 
                 topology["devices"][device["serial"]] = device_detail
 
@@ -115,7 +113,7 @@ class MerakiComplexApiTools:
                 if isinstance(vlans, list):
                     for vlan in vlans:
                         vlan_id = str(vlan.get("id", ""))
-                        if vlan_id:
+                        if vlan_id and isinstance(topology["vlans"], dict):
                             topology["vlans"][vlan_id] = {
                                 "id": vlan.get("id"),
                                 "name": vlan.get("name", f"VLAN {vlan.get('id')}"),
@@ -141,18 +139,10 @@ class MerakiComplexApiTools:
                 {"error": f"Failed to analyze topology: {str(e)}"}, indent=2
             )
 
-    async def analyze_device_health_test(
-        self, serial: str, time_span: int = 86400
-    ) -> str:
-        """Simple test version"""
-        try:
-            return json.dumps({"status": "test_success", "serial": serial}, indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)}, indent=2)
-
-    async def analyze_device_health(self, serial: str, time_span: int = 86400) -> str:
+    async def analyze_device_health(self, serial: str) -> str:
         """
-        Perform comprehensive device health analysis with diagnostics and recommendations.
+        Perform comprehensive device health analysis with diagnostics and
+        recommendations.
 
         This tool analyzes device health by:
         1. Checking current device status and uptime
@@ -164,7 +154,6 @@ class MerakiComplexApiTools:
 
         Args:
             serial (str): Device serial number
-            time_span (int): Time span in seconds for historical analysis (default: 24 hours)
 
         Returns:
             JSON string containing:
@@ -182,6 +171,14 @@ class MerakiComplexApiTools:
             device = await self._async_call(dashboard.devices.getDevice, serial=serial)
 
             # Build basic health report
+            # Add device type specific information
+            device_model = device.get("model", "Unknown")
+            device_type = (
+                "wireless"
+                if device.get("model", "").upper().startswith("MR")
+                else "unknown"
+            )
+
             health_report = {
                 "device": {
                     "serial": serial,
@@ -191,11 +188,12 @@ class MerakiComplexApiTools:
                     "lan_ip": device.get("lanIp", "Unknown"),
                     "mac": device.get("mac", "Unknown"),
                     "network_id": device.get("networkId", "Unknown"),
+                    "type": device_type,
                 },
                 "health_score": 85,  # Base score
                 "status": {
                     "online": True,  # Device responded to API call
-                    "last_check": datetime.utcnow().isoformat(),
+                    "last_check": datetime.now(timezone.utc).isoformat(),
                     "api_accessible": True,
                 },
                 "components": {
@@ -207,56 +205,60 @@ class MerakiComplexApiTools:
                     "api_response": "responsive",
                     "data_completeness": "good",
                 },
-                "recommendations": [
-                    "Device is responding to API calls",
-                    "Basic configuration appears complete",
-                ],
-                "analysis_time": datetime.utcnow().isoformat(),
+                "recommendations": [],
+                "analysis_time": datetime.now(timezone.utc).isoformat(),
                 "analysis_scope": "basic_health_check",
             }
 
-            # Add device type specific information
-            device_type = (
-                "wireless"
-                if device.get("model", "").upper().startswith("MR")
-                else "unknown"
-            )
-            health_report["device"]["type"] = device_type
-
             # Check for common issues based on available data
+            issues: list[dict[str, Any]] = []
+            recommendations: list[str] = [
+                "Device is responding to API calls",
+                "Basic configuration appears complete",
+            ]
+            health_score: int = 85
+
             if not device.get("name"):
-                health_report["issues"].append(
+                issues.append(
                     {
                         "severity": "low",
                         "component": "configuration",
                         "description": "Device has no custom name configured",
                     }
                 )
-                health_report["health_score"] -= 5
+                health_score -= 5
 
             if not device.get("lanIp"):
-                health_report["issues"].append(
+                issues.append(
                     {
                         "severity": "medium",
                         "component": "connectivity",
                         "description": "No LAN IP address information available",
                     }
                 )
-                health_report["health_score"] -= 10
+                health_score -= 10
 
             # Add device-specific recommendations
             if device_type == "wireless":
-                health_report["recommendations"].append(
+                recommendations.append(
                     "Consider checking wireless client connectivity and signal strength"
                 )
-            elif device_type == "switch":
-                health_report["recommendations"].append(
+            elif device_model == "switch":
+                recommendations.append(
                     "Consider checking port utilization and VLAN configuration"
                 )
-            elif device_type == "appliance":
-                health_report["recommendations"].append(
+            elif device_model == "appliance":
+                recommendations.append(
                     "Consider checking uplink status and security policies"
                 )
+
+            health_report.update(
+                {
+                    "issues": issues,
+                    "recommendations": recommendations,
+                    "health_score": health_score,
+                }
+            )
 
             return json.dumps(health_report, indent=2, default=str)
 
@@ -266,7 +268,7 @@ class MerakiComplexApiTools:
                 {
                     "error": f"Failed to analyze device health: {str(e)}",
                     "device_serial": serial,
-                    "analysis_time": datetime.utcnow().isoformat(),
+                    "analysis_time": datetime.now(timezone.utc).isoformat(),
                 },
                 indent=2,
             )
@@ -305,7 +307,7 @@ class MerakiComplexApiTools:
             audit_report = {
                 "network_id": network_id,
                 "security_score": 100,
-                "audit_time": datetime.utcnow().isoformat(),
+                "audit_time": datetime.now(timezone.utc).isoformat(),
                 "findings": {
                     "critical": [],
                     "high": [],
@@ -385,7 +387,7 @@ class MerakiComplexApiTools:
             performance_report = {
                 "network_id": network_id,
                 "time_span": time_span,
-                "analysis_time": datetime.utcnow().isoformat(),
+                "analysis_time": datetime.now(timezone.utc).isoformat(),
                 "performance_score": 100,
                 "metrics": {
                     "bandwidth": {},
@@ -411,9 +413,7 @@ class MerakiComplexApiTools:
 
             # Analyze device performance
             for device in devices:
-                await self._analyze_device_performance(
-                    device, performance_report, time_span
-                )
+                await self._analyze_device_performance(device, performance_report)
 
             # Get network clients and traffic analytics
             try:
@@ -429,9 +429,7 @@ class MerakiComplexApiTools:
 
             # Analyze traffic patterns if available
             if "appliance" in network.get("productTypes", []):
-                await self._analyze_traffic_patterns(
-                    network_id, performance_report, time_span
-                )
+                await self._analyze_traffic_patterns(network_id, performance_report)
 
             # Identify bottlenecks and issues
             self._identify_performance_bottlenecks(performance_report)
@@ -448,7 +446,7 @@ class MerakiComplexApiTools:
             )
 
     async def analyze_configuration_drift(
-        self, organization_id: str, network_ids: Optional[List[str]] = None
+        self, organization_id: str, network_ids: list[str] | None = None
     ) -> str:
         """
         Analyze configuration consistency across networks and identify drift.
@@ -463,7 +461,8 @@ class MerakiComplexApiTools:
 
         Args:
             organization_id (str): Organization ID to analyze
-            network_ids (List[str], optional): Specific networks to analyze (analyzes all if None)
+            network_ids (list[str], optional): Specific networks to analyze
+            (analyzes all if None)
 
         Returns:
             JSON string containing:
@@ -479,7 +478,7 @@ class MerakiComplexApiTools:
 
             drift_report = {
                 "organization_id": organization_id,
-                "analysis_time": datetime.utcnow().isoformat(),
+                "analysis_time": datetime.now(timezone.utc).isoformat(),
                 "consistency_score": 100,
                 "configuration_groups": {},
                 "deviations": [],
@@ -564,7 +563,7 @@ class MerakiComplexApiTools:
                     "source_ip": source_ip,
                     "destination_ip": destination_ip,
                     "network_id": network_id,
-                    "test_time": datetime.utcnow().isoformat(),
+                    "test_time": datetime.now(timezone.utc).isoformat(),
                 },
                 "connectivity_status": "unknown",
                 "path_analysis": {},
@@ -605,7 +604,7 @@ class MerakiComplexApiTools:
 
             if "switch" in network.get("productTypes", []):
                 await self._troubleshoot_switch_connectivity(
-                    network_id, source_client, dest_client, troubleshoot_report
+                    source_client, dest_client, troubleshoot_report
                 )
 
             # Generate troubleshooting recommendations
@@ -653,7 +652,7 @@ class MerakiComplexApiTools:
             experience_report = {
                 "network_id": network_id,
                 "time_span": time_span,
-                "analysis_time": datetime.utcnow().isoformat(),
+                "analysis_time": datetime.now(timezone.utc).isoformat(),
                 "experience_score": 100,
                 "client_metrics": {
                     "total_clients": 0,
@@ -680,7 +679,7 @@ class MerakiComplexApiTools:
                 perPage=1000,
             )
 
-            experience_report["client_metrics"]["total_clients"] = len(clients)
+            experience_report["client_metrics"]["total_clients"] = len(clients)  # pyright: ignore[reportIndexIssue]
 
             # Analyze each client
             for client in clients:
@@ -739,7 +738,7 @@ class MerakiComplexApiTools:
 
             inventory_report = {
                 "organization_id": organization_id,
-                "report_time": datetime.utcnow().isoformat(),
+                "report_time": datetime.now(timezone.utc).isoformat(),
                 "summary": {
                     "total_devices": 0,
                     "device_breakdown": {},
@@ -769,7 +768,7 @@ class MerakiComplexApiTools:
                 organizationId=organization_id,
             )
 
-            inventory_report["summary"]["total_devices"] = len(devices)
+            inventory_report["summary"]["total_devices"] = len(devices)  # pyright: ignore[reportIndexIssue]
 
             # Get licensing information
             try:
@@ -801,7 +800,7 @@ class MerakiComplexApiTools:
                 device_counts[device_info["type"]] += 1
                 inventory_report["devices"].append(device_info)
 
-            inventory_report["summary"]["device_breakdown"] = dict(device_counts)
+            inventory_report["summary"]["device_breakdown"] = dict(device_counts)  # pyright: ignore[reportIndexIssue]
 
             # Get client inventory if requested
             if include_clients:
@@ -819,7 +818,7 @@ class MerakiComplexApiTools:
             )
 
     # Helper methods
-    async def _async_call(self, func, **kwargs):
+    async def _async_call(self, func: Callable[..., Any], **kwargs: Any) -> Any:
         """Execute synchronous function asynchronously"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: func(**kwargs))
@@ -840,7 +839,10 @@ class MerakiComplexApiTools:
         return "unknown"
 
     async def _analyze_switch_topology(
-        self, device: Dict, device_detail: Dict, topology: Dict
+        self,
+        device: dict[str, Any],
+        device_detail: dict[str, Any],
+        topology: dict[str, Any],
     ):
         """Analyze switch-specific topology information"""
         try:
@@ -890,7 +892,10 @@ class MerakiComplexApiTools:
             logger.warning(f"Failed to analyze switch topology: {e}")
 
     async def _analyze_appliance_topology(
-        self, device: Dict, device_detail: Dict, topology: Dict, network_id: str
+        self,
+        device: dict[str, Any],
+        device_detail: dict[str, Any],
+        network_id: str,
     ):
         """Analyze appliance-specific topology information"""
         try:
@@ -927,7 +932,9 @@ class MerakiComplexApiTools:
             logger.warning(f"Failed to analyze appliance topology: {e}")
 
     async def _analyze_wireless_topology(
-        self, device: Dict, device_detail: Dict, topology: Dict
+        self,
+        device: dict[str, Any],
+        device_detail: dict[str, Any],
     ):
         """Analyze wireless-specific topology information"""
         try:
@@ -946,7 +953,9 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to analyze wireless topology: {e}")
 
-    async def _analyze_client_distribution(self, topology: Dict, network_id: str):
+    async def _analyze_client_distribution(
+        self, topology: dict[str, Any], network_id: str
+    ):
         """Analyze how clients are distributed across the network"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -978,7 +987,7 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to analyze client distribution: {e}")
 
-    def _generate_topology_summary(self, topology: Dict):
+    def _generate_topology_summary(self, topology: dict[str, Any]):
         """Generate summary statistics for topology"""
         device_types = defaultdict(int)
         total_ports = 0
@@ -1007,10 +1016,8 @@ class MerakiComplexApiTools:
     async def _analyze_switch_health(
         self,
         serial: str,
-        device: Dict,
-        health_report: Dict,
-        time_span: int,
-        organization_id: str,
+        device: dict[str, Any],
+        health_report: dict[str, Any],
     ):
         """Analyze switch-specific health metrics"""
         try:
@@ -1039,7 +1046,10 @@ class MerakiComplexApiTools:
                         {
                             "severity": "medium",
                             "component": f"port_{port_status['portId']}",
-                            "description": f"Port {port_status['portId']} has errors: {', '.join(port_status['errors'])}",
+                            "description": (
+                                f"Port {port_status['portId']} has errors: "
+                                f"{', '.join(port_status['errors'])}"
+                            ),
                         }
                     )
                     health_report["health_score"] -= 5
@@ -1070,9 +1080,7 @@ class MerakiComplexApiTools:
     async def _analyze_appliance_health(
         self,
         serial: str,
-        device: Dict,
-        health_report: Dict,
-        time_span: int,
+        health_report: dict[str, Any],
         organization_id: str,
     ):
         """Analyze appliance-specific health metrics"""
@@ -1094,7 +1102,10 @@ class MerakiComplexApiTools:
                     {
                         "severity": "high",
                         "component": "performance",
-                        "description": f"Performance score is low: {performance.get('perfScore', 0)}",
+                        "description": (
+                            f"Performance score is low: "
+                            f"{performance.get('perfScore', 0)}"
+                        ),
                     }
                 )
 
@@ -1120,7 +1131,10 @@ class MerakiComplexApiTools:
                             {
                                 "severity": "medium",
                                 "component": "uplinks",
-                                "description": f"Only {uplink_health['active']} of {uplink_health['total']} uplinks are active",
+                                "description": (
+                                    f"Only {uplink_health['active']} of "
+                                    f"{uplink_health['total']} uplinks are active"
+                                ),
                             }
                         )
                         health_report["health_score"] -= 10
@@ -1133,10 +1147,8 @@ class MerakiComplexApiTools:
     async def _analyze_wireless_health(
         self,
         serial: str,
-        device: Dict,
-        health_report: Dict,
+        health_report: dict[str, Any],
         time_span: int,
-        organization_id: str,
     ):
         """Analyze wireless-specific health metrics"""
         try:
@@ -1166,7 +1178,9 @@ class MerakiComplexApiTools:
                         {
                             "severity": "high",
                             "component": "wireless",
-                            "description": f"Low connection success rate: {success_rate:.2f}%",
+                            "description": (
+                                f"Low connection success rate: " f"{success_rate:.2f}%"
+                            ),
                         }
                     )
 
@@ -1186,7 +1200,10 @@ class MerakiComplexApiTools:
                         {
                             "severity": "medium",
                             "component": "wireless_channels",
-                            "description": f"High channel utilization on channels: {high_utilization_channels}",
+                            "description": (
+                                f"High channel utilization on channels: "
+                                f"{high_utilization_channels}"
+                            ),
                         }
                     )
                     health_report["health_score"] -= 10
@@ -1197,7 +1214,10 @@ class MerakiComplexApiTools:
             logger.warning(f"Failed to analyze wireless health: {e}")
 
     async def _check_firmware_status(
-        self, device: Dict, health_report: Dict, organization_id: str
+        self,
+        device: dict[str, Any],
+        health_report: dict[str, Any],
+        organization_id: str,
     ):
         """Check if device firmware is up to date"""
         try:
@@ -1225,8 +1245,14 @@ class MerakiComplexApiTools:
                                 {
                                     "category": "firmware",
                                     "priority": "medium",
-                                    "description": f"Firmware update available: {latest_version.get('shortName')}",
-                                    "action": f"Update firmware from {current_firmware} to {latest_version.get('shortName')}",
+                                    "description": (
+                                        f"Firmware update available: "
+                                        f"{latest_version.get('shortName')}"
+                                    ),
+                                    "action": (
+                                        f"Update firmware from {current_firmware} "
+                                        f"to {latest_version.get('shortName')}"
+                                    ),
                                 }
                             )
                             health_report["health_score"] -= 5
@@ -1234,7 +1260,7 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to check firmware status: {e}")
 
-    def _generate_health_recommendations(self, health_report: Dict):
+    def _generate_health_recommendations(self, health_report: dict[str, Any]):
         """Generate health improvement recommendations"""
         # Add recommendations based on health score and issues
         if health_report["health_score"] < 50:
@@ -1244,17 +1270,23 @@ class MerakiComplexApiTools:
                     "category": "critical",
                     "priority": "high",
                     "description": "Device health is critical",
-                    "action": "Immediate attention required - review all critical issues",
+                    "action": (
+                        "Immediate attention required - review all critical " "issues"
+                    ),
                 },
             )
 
         # Sort recommendations by priority
         priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        health_report["recommendations"].sort(
-            key=lambda x: priority_order.get(x.get("priority", "low"), 3)
-        )
 
-    async def _audit_firewall_security(self, network_id: str, audit_report: Dict):
+        def recommendations_sort_key(recommendation: dict[str, Any]) -> int:
+            return priority_order.get(recommendation.get("priority", "low"), 3)
+
+        health_report["recommendations"].sort(key=recommendations_sort_key)
+
+    async def _audit_firewall_security(
+        self, network_id: str, audit_report: dict[str, Any]
+    ):
         """Audit firewall security configuration"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -1284,8 +1316,14 @@ class MerakiComplexApiTools:
                         {
                             "component": "firewall",
                             "rule_index": idx,
-                            "description": f"Overly permissive rule allowing all traffic: {rule.get('comment', 'No comment')}",
-                            "recommendation": "Restrict source and destination to specific networks",
+                            "description": (
+                                f"Overly permissive rule allowing all traffic: "
+                                f"{rule.get('comment', 'No comment')}"
+                            ),
+                            "recommendation": (
+                                "Restrict source and destination to specific "
+                                "networks"
+                            ),
                         }
                     )
                     audit_report["security_score"] -= 15
@@ -1299,7 +1337,9 @@ class MerakiComplexApiTools:
                             "component": "firewall",
                             "rule_index": idx,
                             "description": "Firewall rule missing description",
-                            "recommendation": "Add descriptive comment to document rule purpose",
+                            "recommendation": (
+                                "Add descriptive comment to document rule " "purpose"
+                            ),
                         }
                     )
 
@@ -1318,7 +1358,9 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to audit firewall security: {e}")
 
-    async def _audit_wireless_security(self, network_id: str, audit_report: Dict):
+    async def _audit_wireless_security(
+        self, network_id: str, audit_report: dict[str, Any]
+    ):
         """Audit wireless security configuration"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -1342,7 +1384,9 @@ class MerakiComplexApiTools:
                         {
                             "component": "wireless",
                             "ssid": ssid.get("name"),
-                            "description": "SSID using open authentication (no encryption)",
+                            "description": (
+                                "SSID using open authentication (no encryption)"
+                            ),
                             "recommendation": "Enable WPA2 or WPA3 encryption",
                         }
                     )
@@ -1365,8 +1409,10 @@ class MerakiComplexApiTools:
                         {
                             "component": "wireless",
                             "ssid": ssid.get("name"),
-                            "description": "SSID not using latest WPA3 encryption",
-                            "recommendation": "Consider upgrading to WPA3 for enhanced security",
+                            "description": ("SSID not using latest WPA3 encryption"),
+                            "recommendation": (
+                                "Consider upgrading to WPA3 for enhanced " "security"
+                            ),
                         }
                     )
 
@@ -1378,7 +1424,10 @@ class MerakiComplexApiTools:
                                 "component": "wireless",
                                 "ssid": ssid.get("name"),
                                 "description": "Pre-shared key is too short",
-                                "recommendation": "Use a pre-shared key with at least 12 characters",
+                                "recommendation": (
+                                    "Use a pre-shared key with at least 12 "
+                                    "characters"
+                                ),
                             }
                         )
                         audit_report["security_score"] -= 10
@@ -1389,7 +1438,9 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to audit wireless security: {e}")
 
-    async def _audit_network_settings(self, network_id: str, audit_report: Dict):
+    async def _audit_network_settings(
+        self, network_id: str, audit_report: dict[str, Any]
+    ):
         """Audit network-wide security settings"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -1413,8 +1464,13 @@ class MerakiComplexApiTools:
                         audit_report["findings"]["high"].append(
                             {
                                 "component": "intrusion_detection",
-                                "description": "Intrusion Detection System is disabled",
-                                "recommendation": "Enable IDS in prevention mode for active threat protection",
+                                "description": (
+                                    "Intrusion Detection System is disabled"
+                                ),
+                                "recommendation": (
+                                    "Enable IDS in prevention mode for active "
+                                    "threat protection"
+                                ),
                             }
                         )
                         audit_report["security_score"] -= 15
@@ -1423,7 +1479,10 @@ class MerakiComplexApiTools:
                             {
                                 "component": "intrusion_detection",
                                 "description": "IDS is in detection-only mode",
-                                "recommendation": "Consider switching to prevention mode for active protection",
+                                "recommendation": (
+                                    "Consider switching to prevention mode for "
+                                    "active protection"
+                                ),
                             }
                         )
 
@@ -1441,8 +1500,13 @@ class MerakiComplexApiTools:
                         audit_report["findings"]["low"].append(
                             {
                                 "component": "content_filtering",
-                                "description": "No content filtering categories blocked",
-                                "recommendation": "Enable content filtering for malicious and inappropriate content",
+                                "description": (
+                                    "No content filtering categories blocked"
+                                ),
+                                "recommendation": (
+                                    "Enable content filtering for malicious and "
+                                    "inappropriate content"
+                                ),
                             }
                         )
                 except Exception:
@@ -1451,7 +1515,9 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to audit network settings: {e}")
 
-    async def _audit_admin_access(self, network: Dict, audit_report: Dict):
+    async def _audit_admin_access(
+        self, network: dict[str, Any], audit_report: dict[str, Any]
+    ):
         """Audit administrator access and permissions"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -1481,8 +1547,14 @@ class MerakiComplexApiTools:
                 audit_report["findings"]["medium"].append(
                     {
                         "component": "admin_access",
-                        "description": f"High number of full access administrators: {admin_audit['full_access_admins']}",
-                        "recommendation": "Review admin permissions and apply principle of least privilege",
+                        "description": (
+                            f"High number of full access administrators: "
+                            f"{admin_audit['full_access_admins']}"
+                        ),
+                        "recommendation": (
+                            "Review admin permissions and apply principle of "
+                            "least privilege"
+                        ),
                     }
                 )
                 audit_report["security_score"] -= 5
@@ -1498,8 +1570,14 @@ class MerakiComplexApiTools:
                 audit_report["findings"][severity].append(
                     {
                         "component": "admin_access",
-                        "description": f"Only {two_factor_percentage:.0f}% of admins have two-factor authentication enabled",
-                        "recommendation": "Require two-factor authentication for all administrators",
+                        "description": (
+                            f"Only {two_factor_percentage:.0f}% of admins have "
+                            f"two-factor authentication enabled"
+                        ),
+                        "recommendation": (
+                            "Require two-factor authentication for all "
+                            "administrators"
+                        ),
                     }
                 )
                 audit_report["security_score"] -= 10 if severity == "high" else 5
@@ -1509,7 +1587,7 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to audit admin access: {e}")
 
-    def _calculate_security_score(self, audit_report: Dict):
+    def _calculate_security_score(self, audit_report: dict[str, Any]):
         """Calculate final security score based on findings"""
         # Ensure score doesn't go below 0
         audit_report["security_score"] = max(0, audit_report["security_score"])
@@ -1525,7 +1603,7 @@ class MerakiComplexApiTools:
             "low_findings": len(audit_report["findings"]["low"]),
         }
 
-    def _generate_security_recommendations(self, audit_report: Dict):
+    def _generate_security_recommendations(self, audit_report: dict[str, Any]):
         """Generate security improvement recommendations"""
         recommendations = []
 
@@ -1535,7 +1613,9 @@ class MerakiComplexApiTools:
                     "priority": "urgent",
                     "category": "overall",
                     "description": "Security posture needs immediate attention",
-                    "action": "Address all critical and high severity findings immediately",
+                    "action": (
+                        "Address all critical and high severity findings " "immediately"
+                    ),
                 }
             )
 
@@ -1545,8 +1625,13 @@ class MerakiComplexApiTools:
                 {
                     "priority": "critical",
                     "category": "immediate_action",
-                    "description": f"{len(audit_report['findings']['critical'])} critical security issues found",
-                    "action": "Review and remediate critical findings within 24 hours",
+                    "description": (
+                        f"{len(audit_report['findings']['critical'])} "
+                        f"critical security issues found"
+                    ),
+                    "action": (
+                        "Review and remediate critical findings within " "24 hours"
+                    ),
                 }
             )
 
@@ -1557,15 +1642,18 @@ class MerakiComplexApiTools:
                     {
                         "priority": "high",
                         "category": "firewall",
-                        "description": "Overly permissive firewall rules detected",
-                        "action": "Implement zero-trust principles and restrict firewall rules",
+                        "description": ("Overly permissive firewall rules detected"),
+                        "action": (
+                            "Implement zero-trust principles and restrict "
+                            "firewall rules"
+                        ),
                     }
                 )
 
         audit_report["recommendations"] = recommendations
 
     async def _analyze_device_performance(
-        self, device: Dict, performance_report: Dict, time_span: int
+        self, device: dict[str, Any], performance_report: dict[str, Any]
     ):
         """Analyze individual device performance metrics"""
         try:
@@ -1592,13 +1680,19 @@ class MerakiComplexApiTools:
                         1 for p in port_statuses if p.get("status") == "Connected"
                     )
 
-                    device_metrics["performance"]["port_utilization"] = {
-                        "total": total_ports,
-                        "active": active_ports,
-                        "percentage": round((active_ports / total_ports * 100), 2)
-                        if total_ports > 0
-                        else 0,
-                    }
+                    device_metrics["performance"].update(
+                        {
+                            "port_utilization": {
+                                "total": total_ports,
+                                "active": active_ports,
+                                "percentage": round(
+                                    (active_ports / total_ports * 100), 2
+                                )
+                                if total_ports > 0
+                                else 0,
+                            },
+                        }
+                    )
                 except Exception:
                     pass
 
@@ -1609,7 +1703,11 @@ class MerakiComplexApiTools:
                         dashboard.appliance.getDeviceAppliancePerformance,
                         serial=device["serial"],
                     )
-                    device_metrics["performance"]["score"] = perf.get("perfScore", 0)
+                    device_metrics["performance"].update(
+                        {
+                            "score": perf.get("perfScore", 0),
+                        }
+                    )
 
                     if perf.get("perfScore", 100) < 80:
                         performance_report["bottlenecks"].append(
@@ -1617,7 +1715,10 @@ class MerakiComplexApiTools:
                                 "device": device["serial"],
                                 "type": "performance",
                                 "severity": "high",
-                                "description": f"Low performance score: {perf.get('perfScore', 0)}",
+                                "description": (
+                                    f"Low performance score: "
+                                    f"{perf.get('perfScore', 0)}"
+                                ),
                             }
                         )
                         performance_report["performance_score"] -= 10
@@ -1638,8 +1739,10 @@ class MerakiComplexApiTools:
                         else 0
                     )
 
-                    device_metrics["performance"]["channel_utilization"] = round(
-                        avg_utilization, 2
+                    device_metrics["performance"].update(
+                        {
+                            "channel_utilization": round(avg_utilization, 2),
+                        }
                     )
 
                     if avg_utilization > 70:
@@ -1648,7 +1751,10 @@ class MerakiComplexApiTools:
                                 "device": device["serial"],
                                 "type": "wireless_congestion",
                                 "severity": "medium",
-                                "description": f"High channel utilization: {avg_utilization:.0f}%",
+                                "description": (
+                                    f"High channel utilization: "
+                                    f"{avg_utilization:.0f}%"
+                                ),
                             }
                         )
                 except Exception:
@@ -1662,7 +1768,7 @@ class MerakiComplexApiTools:
             logger.warning(f"Failed to analyze device performance: {e}")
 
     def _analyze_client_performance(
-        self, clients: List[Dict], performance_report: Dict
+        self, clients: list[dict[str, Any]], performance_report: dict[str, Any]
     ):
         """Analyze client performance and identify top talkers"""
         # Sort clients by usage
@@ -1705,7 +1811,7 @@ class MerakiComplexApiTools:
         }
 
     async def _analyze_traffic_patterns(
-        self, network_id: str, performance_report: Dict, time_span: int
+        self, network_id: str, performance_report: dict[str, Any]
     ):
         """Analyze traffic patterns and application usage"""
         try:
@@ -1733,7 +1839,7 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to analyze traffic patterns: {e}")
 
-    def _identify_performance_bottlenecks(self, performance_report: Dict):
+    def _identify_performance_bottlenecks(self, performance_report: dict[str, Any]):
         """Identify performance bottlenecks in the network"""
         # Check for bandwidth bottlenecks
         if performance_report["metrics"]["bandwidth"].get("total_mb", 0) > 10000:
@@ -1748,11 +1854,13 @@ class MerakiComplexApiTools:
 
         # Sort bottlenecks by severity
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        performance_report["bottlenecks"].sort(
-            key=lambda x: severity_order.get(x.get("severity", "low"), 3)
-        )
 
-    def _generate_performance_recommendations(self, performance_report: Dict):
+        def bottlenecks_sort_key(bottleneck: dict[str, Any]) -> int:
+            return severity_order.get(bottleneck.get("severity", "low"), 3)
+
+        performance_report["bottlenecks"].sort(key=bottlenecks_sort_key)
+
+    def _generate_performance_recommendations(self, performance_report: dict[str, Any]):
         """Generate performance optimization recommendations"""
         recommendations = []
 
@@ -1775,7 +1883,10 @@ class MerakiComplexApiTools:
                         "priority": "high",
                         "category": "bandwidth",
                         "description": "Bandwidth optimization needed",
-                        "action": "Consider implementing QoS policies or upgrading bandwidth",
+                        "action": (
+                            "Consider implementing QoS policies or upgrading "
+                            "bandwidth"
+                        ),
                     }
                 )
             elif bottleneck["type"] == "wireless_congestion":
@@ -1784,14 +1895,20 @@ class MerakiComplexApiTools:
                         "priority": "medium",
                         "category": "wireless",
                         "description": "Wireless congestion detected",
-                        "action": "Add additional access points or optimize channel assignments",
+                        "action": (
+                            "Add additional access points or optimize channel "
+                            "assignments"
+                        ),
                     }
                 )
 
         performance_report["recommendations"] = recommendations
 
     async def _analyze_configuration_group(
-        self, product_types: Tuple, networks: List[Dict], drift_report: Dict
+        self,
+        product_types: tuple[str, ...],
+        networks: list[dict[str, Any]],
+        drift_report: dict[str, Any],
     ):
         """Analyze configuration consistency within a group of similar networks"""
         try:
@@ -1806,7 +1923,7 @@ class MerakiComplexApiTools:
             }
 
             # Collect configurations from each network
-            network_configs = {}
+            network_configs: dict[str, Any] = {}
             for network in networks:
                 config = {"network_id": network["id"], "name": network["name"]}
 
@@ -1836,9 +1953,7 @@ class MerakiComplexApiTools:
                 network_configs[network["id"]] = config
 
             # Analyze configurations for inconsistencies
-            self._find_configuration_inconsistencies(
-                network_configs, group_analysis, drift_report
-            )
+            self._find_configuration_inconsistencies(network_configs, drift_report)
 
             drift_report["configuration_groups"][group_key] = group_analysis
 
@@ -1846,7 +1961,9 @@ class MerakiComplexApiTools:
             logger.warning(f"Failed to analyze configuration group: {e}")
 
     def _find_configuration_inconsistencies(
-        self, network_configs: Dict, group_analysis: Dict, drift_report: Dict
+        self,
+        network_configs: dict[str, Any],
+        drift_report: dict[str, Any],
     ):
         """Find inconsistencies in network configurations"""
         # Example: Check SSID consistency
@@ -1865,7 +1982,9 @@ class MerakiComplexApiTools:
                     {
                         "type": "missing_ssid",
                         "ssid": ssid_name,
-                        "description": f"SSID '{ssid_name}' is not configured on all networks",
+                        "description": (
+                            f"SSID '{ssid_name}' is not configured on all " f"networks"
+                        ),
                         "networks_missing": len(network_configs) - len(configs),
                     }
                 )
@@ -1878,12 +1997,15 @@ class MerakiComplexApiTools:
                     {
                         "type": "ssid_state_mismatch",
                         "ssid": ssid_name,
-                        "description": f"SSID '{ssid_name}' has inconsistent enabled state across networks",
+                        "description": (
+                            f"SSID '{ssid_name}' has inconsistent enabled "
+                            f"state across networks"
+                        ),
                     }
                 )
                 drift_report["consistency_score"] -= 3
 
-    def _calculate_consistency_score(self, drift_report: Dict):
+    def _calculate_consistency_score(self, drift_report: dict[str, Any]):
         """Calculate overall configuration consistency score"""
         # Ensure score doesn't go below 0
         drift_report["consistency_score"] = max(0, drift_report["consistency_score"])
@@ -1894,7 +2016,7 @@ class MerakiComplexApiTools:
             "configuration_groups": len(drift_report["configuration_groups"]),
         }
 
-    def _generate_drift_recommendations(self, drift_report: Dict):
+    def _generate_drift_recommendations(self, drift_report: dict[str, Any]):
         """Generate configuration standardization recommendations"""
         recommendations = []
 
@@ -1904,7 +2026,10 @@ class MerakiComplexApiTools:
                     "priority": "high",
                     "category": "standardization",
                     "description": "Significant configuration drift detected",
-                    "action": "Consider implementing configuration templates for consistency",
+                    "action": (
+                        "Consider implementing configuration templates for "
+                        "consistency"
+                    ),
                 }
             )
 
@@ -1915,8 +2040,11 @@ class MerakiComplexApiTools:
                 {
                     "priority": "medium",
                     "category": "wireless",
-                    "description": f"{len(ssid_deviations)} SSID configuration inconsistencies found",
-                    "action": "Standardize SSID configurations across all networks",
+                    "description": (
+                        f"{len(ssid_deviations)} SSID configuration "
+                        f"inconsistencies found"
+                    ),
+                    "action": ("Standardize SSID configurations across all networks"),
                 }
             )
 
@@ -1927,7 +2055,7 @@ class MerakiComplexApiTools:
         network_id: str,
         source_ip: str,
         destination_ip: str,
-        troubleshoot_report: Dict,
+        troubleshoot_report: dict[str, Any],
     ):
         """Troubleshoot connectivity through appliance"""
         try:
@@ -1952,11 +2080,12 @@ class MerakiComplexApiTools:
                         blocking_rule = rule
                         break
 
-            if blocked:
+            if blocked and blocking_rule:
+                comment = blocking_rule.get("comment", "No description")
                 troubleshoot_report["blockers"].append(
                     {
                         "type": "firewall_rule",
-                        "description": f"Traffic blocked by firewall rule: {blocking_rule.get('comment', 'No description')}",
+                        "description": (f"Traffic blocked by firewall rule: {comment}"),
                         "rule": blocking_rule,
                     }
                 )
@@ -1973,15 +2102,12 @@ class MerakiComplexApiTools:
 
     async def _troubleshoot_switch_connectivity(
         self,
-        network_id: str,
-        source_client: Optional[Dict],
-        dest_client: Optional[Dict],
-        troubleshoot_report: Dict,
+        source_client: dict[str, Any] | None,
+        dest_client: dict[str, Any] | None,
+        troubleshoot_report: dict[str, Any],
     ):
         """Troubleshoot connectivity through switches"""
         try:
-            dashboard = self.meraki_client.get_dashboard()
-
             # Check if clients are on same VLAN
             if source_client and dest_client:
                 source_vlan = source_client.get("vlan")
@@ -1991,8 +2117,13 @@ class MerakiComplexApiTools:
                     troubleshoot_report["blockers"].append(
                         {
                             "type": "vlan_mismatch",
-                            "description": f"Source (VLAN {source_vlan}) and destination (VLAN {dest_vlan}) are on different VLANs",
-                            "recommendation": "Ensure inter-VLAN routing is configured",
+                            "description": (
+                                f"Source (VLAN {source_vlan}) and destination "
+                                f"(VLAN {dest_vlan}) are on different VLANs"
+                            ),
+                            "recommendation": (
+                                "Ensure inter-VLAN routing is configured"
+                            ),
                         }
                     )
 
@@ -2004,7 +2135,9 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to troubleshoot switch connectivity: {e}")
 
-    def _ip_matches_rule(self, source_ip: str, dest_ip: str, rule: Dict) -> bool:
+    def _ip_matches_rule(
+        self, source_ip: str, dest_ip: str, rule: dict[str, Any]
+    ) -> bool:
         """Check if IP addresses match firewall rule (simplified)"""
         # This is a simplified check - production would need proper CIDR matching
         if rule.get("srcCidr") == "Any" or source_ip in rule.get("srcCidr", ""):
@@ -2012,7 +2145,9 @@ class MerakiComplexApiTools:
                 return True
         return False
 
-    def _generate_troubleshoot_recommendations(self, troubleshoot_report: Dict):
+    def _generate_troubleshoot_recommendations(
+        self, troubleshoot_report: dict[str, Any]
+    ):
         """Generate troubleshooting recommendations"""
         recommendations = []
 
@@ -2031,7 +2166,10 @@ class MerakiComplexApiTools:
                     {
                         "priority": "high",
                         "description": "Firewall rule blocking traffic",
-                        "action": "Add exception rule above blocking rule for required traffic",
+                        "action": (
+                            "Add exception rule above blocking rule for "
+                            "required traffic"
+                        ),
                     }
                 )
             elif blocker["type"] == "vlan_mismatch":
@@ -2039,13 +2177,18 @@ class MerakiComplexApiTools:
                     {
                         "priority": "medium",
                         "description": "VLAN routing issue",
-                        "action": "Configure inter-VLAN routing or move devices to same VLAN",
+                        "action": (
+                            "Configure inter-VLAN routing or move devices to "
+                            "same VLAN"
+                        ),
                     }
                 )
 
         troubleshoot_report["recommendations"] = recommendations
 
-    def _analyze_client_metrics(self, client: Dict, experience_report: Dict):
+    def _analyze_client_metrics(
+        self, client: dict[str, Any], experience_report: dict[str, Any]
+    ):
         """Analyze individual client metrics"""
         usage = client.get("usage", {})
         total_usage = usage.get("sent", 0) + usage.get("recv", 0)
@@ -2084,7 +2227,7 @@ class MerakiComplexApiTools:
             )
 
     async def _analyze_wireless_experience(
-        self, network_id: str, experience_report: Dict, time_span: int
+        self, network_id: str, experience_report: dict[str, Any], time_span: int
     ):
         """Analyze wireless-specific client experience metrics"""
         try:
@@ -2115,7 +2258,10 @@ class MerakiComplexApiTools:
                     experience_report["problem_clients"].append(
                         {
                             "type": "wireless_connectivity",
-                            "description": f"Low wireless connection success rate: {success_rate:.1f}%",
+                            "description": (
+                                f"Low wireless connection success rate: "
+                                f"{success_rate:.1f}%"
+                            ),
                             "impact": "high",
                         }
                     )
@@ -2131,7 +2277,10 @@ class MerakiComplexApiTools:
                 experience_report["problem_clients"].append(
                     {
                         "type": "failed_connections",
-                        "description": f"High number of failed connections: {len(failed_connections)}",
+                        "description": (
+                            f"High number of failed connections: "
+                            f"{len(failed_connections)}"
+                        ),
                         "impact": "medium",
                     }
                 )
@@ -2139,7 +2288,7 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to analyze wireless experience: {e}")
 
-    def _calculate_experience_score(self, experience_report: Dict):
+    def _calculate_experience_score(self, experience_report: dict[str, Any]):
         """Calculate overall client experience score"""
         # Ensure score doesn't go below 0
         experience_report["experience_score"] = max(
@@ -2152,7 +2301,7 @@ class MerakiComplexApiTools:
             issue_penalty = min(issue_count * 2, 20)
             experience_report["experience_score"] -= issue_penalty
 
-    def _generate_experience_recommendations(self, experience_report: Dict):
+    def _generate_experience_recommendations(self, experience_report: dict[str, Any]):
         """Generate client experience improvement recommendations"""
         recommendations = []
 
@@ -2178,14 +2327,17 @@ class MerakiComplexApiTools:
                     "priority": "high",
                     "category": "wireless",
                     "description": "Wireless connectivity issues detected",
-                    "action": "Review wireless configuration, channel utilization, and coverage",
+                    "action": (
+                        "Review wireless configuration, channel utilization, "
+                        "and coverage"
+                    ),
                 }
             )
 
         experience_report["recommendations"] = recommendations
 
     def _analyze_license_utilization(
-        self, licenses: List[Dict], inventory_report: Dict
+        self, licenses: list[dict[str, Any]], inventory_report: dict[str, Any]
     ):
         """Analyze license utilization and expiration"""
         license_summary = {
@@ -2197,7 +2349,7 @@ class MerakiComplexApiTools:
 
         for license in licenses:
             license_type = license.get("licenseType", "Unknown")
-            license_summary["by_type"][license_type] += 1
+            license_summary["by_type"][license_type] += 1  # pyright: ignore[reportIndexIssue]
 
             # Check expiration
             expiration_date = license.get("expirationDate")
@@ -2207,7 +2359,9 @@ class MerakiComplexApiTools:
 
         inventory_report["summary"]["license_summary"] = dict(license_summary)
 
-    def _check_device_lifecycle(self, device_info: Dict, inventory_report: Dict):
+    def _check_device_lifecycle(
+        self, device_info: dict[str, Any], inventory_report: dict[str, Any]
+    ):
         """Check device lifecycle status"""
         model = device_info["model"]
 
@@ -2224,7 +2378,9 @@ class MerakiComplexApiTools:
                 }
             )
 
-    async def _get_client_inventory(self, organization_id: str, inventory_report: Dict):
+    async def _get_client_inventory(
+        self, organization_id: str, inventory_report: dict[str, Any]
+    ):
         """Get inventory of client devices"""
         try:
             dashboard = self.meraki_client.get_dashboard()
@@ -2261,7 +2417,7 @@ class MerakiComplexApiTools:
         except Exception as e:
             logger.warning(f"Failed to get client inventory: {e}")
 
-    def _generate_inventory_insights(self, inventory_report: Dict):
+    def _generate_inventory_insights(self, inventory_report: dict[str, Any]):
         """Generate inventory insights and recommendations"""
         recommendations = []
 
@@ -2271,7 +2427,10 @@ class MerakiComplexApiTools:
                 {
                     "priority": "high",
                     "category": "lifecycle",
-                    "description": f"{len(inventory_report['insights']['end_of_life'])} devices are end of life",
+                    "description": (
+                        f"{len(inventory_report['insights']['end_of_life'])} "
+                        f"devices are end of life"
+                    ),
                     "action": "Create replacement plan for EOL equipment",
                     "cost_impact": "high",
                 }

@@ -1,28 +1,73 @@
-import logging
-
 import meraki
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+from selent_mcp.services.meraki_multi_client import MerakiMultiClient
 
 
 class MerakiClient:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self._dashboard = None
+    """
+    Meraki client wrapper that supports both single and multiple API keys.
+    """
 
-    def get_dashboard(self) -> meraki.DashboardAPI:
-        """Get or create dashboard API instance with connection reuse"""
-        if self._dashboard is None:
+    def __init__(self, api_key: str):
+        """
+        Initialize Meraki client with single or multiple API keys.
+
+        Args:
+            api_key: Single API key or comma-separated multiple keys
+                Examples:
+                - "abc123"  (single key - backward compatible)
+                - "key1,key2,key3"  (multiple keys)
+                - "customer_a:key1,customer_b:key2"  (named keys)
+        """
+        self.api_key: str = api_key
+        self._multi_client: MerakiMultiClient | None = None
+
+        if api_key:
             try:
-                self._dashboard = meraki.DashboardAPI(
-                    api_key=self.api_key,
-                    suppress_logging=True,
-                    maximum_retries=3,
-                    caller="SelentMCP/1.0 SelentAI",
-                    wait_on_rate_limit=True,
-                )
-                logger.info("Meraki Dashboard API client initialized")
+                self._multi_client = MerakiMultiClient(api_key)
             except Exception as e:
-                logger.error(f"Failed to initialize Meraki Dashboard API: {e}")
+                logger.error(f"Failed to initialize MerakiMultiClient: {e}")
                 raise
-        return self._dashboard
+
+    def get_dashboard(
+        self,
+        key_id: str | None = None,
+        organization_id: str | None = None,
+    ) -> meraki.DashboardAPI:
+        """
+        Get or create dashboard API instance with connection reuse.
+
+        Args:
+            key_id: Optional key identifier for multi-key mode
+            organization_id: Optional organization ID to auto-select key
+
+        Returns:
+            meraki.DashboardAPI instance
+
+        Raises:
+            ValueError: If no API key available or key not found
+        """
+        if self._multi_client is None:
+            raise ValueError("No API key configured")
+
+        try:
+            return self._multi_client.get_dashboard(
+                key_id=key_id, organization_id=organization_id
+            )
+        except Exception as e:
+            logger.error(f"Failed to get dashboard: {e}")
+            raise
+
+    @property
+    def multi_client(self) -> MerakiMultiClient:
+        """Access to underlying multi-client for advanced operations"""
+        if self._multi_client is None:
+            raise ValueError("No API key configured")
+        return self._multi_client
+
+    def is_multi_key(self) -> bool:
+        """Check if client is configured with multiple API keys"""
+        if self._multi_client is None:
+            return False
+        return len(self._multi_client.keys) > 1

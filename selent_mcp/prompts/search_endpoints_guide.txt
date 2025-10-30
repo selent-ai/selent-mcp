@@ -1,0 +1,80 @@
+# Searching Meraki API Endpoints
+
+## How It Works
+
+The `search_meraki_api_endpoints` tool uses semantic search to find relevant API methods
+based on natural language queries. It searches through 816 Meraki API endpoints and
+returns the most relevant matches.
+
+## Effective Search Examples
+
+### Device Operations
+- "get device status" → finds getDevice, getDeviceUplink, etc.
+- "configure switch port" → finds updateDeviceSwitchPort
+- "device port configuration" → finds getDeviceSwitchPort
+- "wireless access point settings" → finds wireless device configs
+
+### Network Management
+- "list network clients" → finds getNetworkClients
+- "network firewall rules" → finds getNetworkApplianceFirewallL3FirewallRules
+- "create new network" → finds createOrganizationNetwork
+- "network topology" → finds getNetworkTopologyLinkLayer
+
+### Organization Level
+- "get my organizations" → finds getOrganizations
+- "list all devices in organization" → finds getOrganizationDevices
+- "organization inventory" → finds getOrganizationInventoryDevices
+- "organization configuration templates" → finds config template methods
+
+### Security & Compliance
+- "security appliance settings" → finds MX appliance endpoints
+- "content filtering" → finds getNetworkApplianceContentFiltering
+- "VPN configuration" → finds VPN-related endpoints
+- "port forwarding rules" → finds port forwarding endpoints
+
+### Monitoring & Analytics
+- "client traffic" → finds traffic analysis endpoints
+- "device uplink information" → finds getDeviceUplink
+- "wireless client connectivity" → finds wireless client methods
+- "network events" → finds getNetworkEvents
+
+## Search Parameters
+
+**query** (required): Natural language description of what you're looking for
+
+**limit** (optional, default: 5): Number of results to return (1-10 recommended)
+
+**min_score** (optional, default: 0.5): Minimum similarity score (0.0-1.0)
+  - Higher values = more strict matching
+  - Lower values = more permissive matching
+
+## Example Usage
+
+```
+# Basic search
+search_meraki_api_endpoints(query="get organizations", limit=3)
+
+# More results
+search_meraki_api_endpoints(query="firewall rules", limit=10)
+
+# Stricter matching
+search_meraki_api_endpoints(query="device status", limit=5, min_score=0.7)
+```
+
+## Interpreting Results
+
+Each result includes:
+- **score**: Relevance (0.0-1.0, higher is better)
+- **section**: API section (e.g., "devices", "networks")
+- **method**: Exact method name to use
+- **description**: What the endpoint does
+
+Scores above 0.7 are usually very relevant.
+Scores between 0.5-0.7 may be partially relevant.
+Scores below 0.5 are likely not what you're looking for.
+
+## Next Steps
+
+After finding endpoints:
+1. Use `get_meraki_endpoint_parameters()` to see required parameters
+2. Use `execute_meraki_api_endpoint()` to call the API

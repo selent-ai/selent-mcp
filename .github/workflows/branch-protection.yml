@@ -10,21 +10,31 @@ jobs:
     steps:
       - name: Check if authorized to merge
         run: |
-          # Only allow organization members to merge to main
-          ORG_NAME="selent-ai"
+          # Check repository permissions instead of org membership
+          # (default GITHUB_TOKEN doesn't have org:read permissions)
+
           CURRENT_USER="${{ github.actor }}"
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
 
-          echo "Organization: $ORG_NAME"
+          echo "Repository: $REPO_OWNER/$REPO_NAME"
           echo "Current user: $CURRENT_USER"
+          echo "PR author: ${{ github.event.pull_request.user.login }}"
+          echo ""
 
-          # Check if user is a member of the organization
-          if gh api orgs/$ORG_NAME/members/$CURRENT_USER --silent 2>/dev/null; then
-            echo "✅ User $CURRENT_USER is a member of $ORG_NAME organization"
+          # Check if user has write access to the repository
+          RESPONSE=$(gh api repos/$REPO_OWNER/$REPO_NAME/collaborators/$CURRENT_USER/permission || echo '{"permission": "none"}')
+          PERMISSION=$(echo "$RESPONSE" | jq -r '.permission')
+
+          echo "User permission level: $PERMISSION"
+
+          if [[ "$PERMISSION" == "admin" || "$PERMISSION" == "write" || "$PERMISSION" == "maintain" ]]; then
+            echo "✅ User $CURRENT_USER has $PERMISSION access to repository"
             echo "✅ Authorized to merge to main branch"
           else
-            echo "❌ Error: Only members of $ORG_NAME organization can merge to main branch"
-            echo "Current user $CURRENT_USER is not a member of the organization"
-            echo "Please contact organization administrators for access"
+            echo "❌ Error: Only users with write access can merge to main branch"
+            echo "Current user $CURRENT_USER has '$PERMISSION' permission"
+            echo "Please contact repository administrators for access"
             exit 1
           fi
         env:

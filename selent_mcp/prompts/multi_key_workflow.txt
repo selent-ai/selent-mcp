@@ -1,0 +1,119 @@
+# Multi-API Key Workflow for Managed Service Providers
+
+## Overview
+
+Selent MCP supports managing multiple Meraki organizations through multiple API keys.
+This is ideal for Managed Service Providers (MSPs) handling multiple customers.
+
+## Configuration
+
+### Single Key (Backward Compatible)
+```bash
+MERAKI_API_KEY="abc123..."
+```
+
+### Multiple Keys (Comma-Separated)
+```bash
+# Simple format
+MERAKI_API_KEY="key1,key2,key3"
+
+# Named format (recommended)
+MERAKI_API_KEY="customer_a:key1,customer_b:key2,customer_c:key3"
+```
+
+## Step 1: Discover Available Keys
+
+First, see what API keys are configured:
+
+```
+list_api_keys()
+```
+
+**Returns:**
+```json
+{
+  "count": 3,
+  "keys": [
+    {
+      "key_id": "customer_a",
+      "name": "Customer A - Acme Corp",
+      "organization_count": 5,
+      "is_default": true
+    },
+    {
+      "key_id": "customer_b",
+      "name": "Customer B - Beta Industries",
+      "organization_count": 3,
+      "is_default": false
+    }
+  ]
+}
+```
+
+## Step 2: Get Organizations for a Customer
+
+To see what organizations a specific customer has access to:
+
+```
+get_key_organizations(key_id="customer_a")
+```
+
+**Or discover all at once:**
+```
+discover_all_organizations()
+```
+
+This populates the cache and enables auto-selection by organization ID.
+
+## Step 3: Execute API Calls
+
+### Option A: Specify key_id Explicitly
+
+```
+execute_meraki_api_endpoint(
+    section='organizations',
+    method='getOrganizations',
+    key_id='customer_a'
+)
+```
+
+### Option B: Auto-Select by Organization ID
+
+After discovering organizations, the system can auto-select the right key:
+
+```
+execute_meraki_api_endpoint(
+    section='networks',
+    method='getOrganizationNetworks',
+    organizationId='123456'  # System finds the right key
+)
+```
+
+### Option C: Set Default Key for Session
+
+When working with one customer for multiple operations:
+
+```
+set_default_key(key_id='customer_a')
+
+# Now all calls without key_id use customer_a
+execute_meraki_api_endpoint(
+    section='organizations',
+    method='getOrganizations'
+)
+
+execute_meraki_api_endpoint(
+    section='devices',
+    method='getOrganizationDevices',
+    organizationId='123456'
+)
+```
+
+## Key Selection Priority
+
+The system resolves which API key to use in this order:
+
+1. **Explicit key_id** - If you provide `key_id` parameter
+2. **Organization ID** - If you provide `organizationId` and orgs are cached
+3. **Default key** - The default key set via `set_default_key()`
+4. **First key** - The first key in the configuration

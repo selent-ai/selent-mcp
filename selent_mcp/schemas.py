@@ -1,8 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-# Selent Tools MCP Schemas
 
 
 class SelentError(BaseModel):
@@ -10,9 +8,9 @@ class SelentError(BaseModel):
 
     error: bool = True
     message: str = Field(..., description="Error message explaining what went wrong")
-    example: Optional[str] = Field(None, description="Example of correct usage")
-    note: Optional[str] = Field(None, description="Additional notes or guidance")
-    how_to_get_model: Optional[str] = Field(
+    example: str | None = Field(None, description="Example of correct usage")
+    note: str | None = Field(None, description="Additional notes or guidance")
+    how_to_get_model: str | None = Field(
         None, description="How to fetch required information"
     )
 
@@ -29,7 +27,7 @@ class BackupResponse(BaseModel):
     estimated_duration: str = Field(
         ..., description="Expected time for backup completion"
     )
-    next_steps: List[str] = Field(..., description="Actions to monitor backup progress")
+    next_steps: list[str] = Field(..., description="Actions to monitor backup progress")
 
 
 class BackupStatusResponse(BaseModel):
@@ -40,14 +38,14 @@ class BackupStatusResponse(BaseModel):
     status: str = Field(
         ..., description="Current backup status (RUNNING, SUCCESS, FAILED)"
     )
-    progress_details: Optional[Dict[str, Any]] = Field(
+    progress_details: dict[str, Any] | None = Field(
         None, description="Detailed progress information"
     )
-    component_counts: Optional[Dict[str, Any]] = Field(
+    component_counts: dict[str, Any] | None = Field(
         None, description="Statistics of backed up components"
     )
-    execution_time: Optional[str] = Field(None, description="Time taken for backup")
-    interpretation: Dict[str, Any] = Field(
+    execution_time: str | None = Field(None, description="Time taken for backup")
+    interpretation: dict[str, Any] = Field(
         ..., description="User-friendly interpretation of status"
     )
 
@@ -66,7 +64,7 @@ class RestoreResponse(BaseModel):
     component_id: str = Field(..., description="ID of the component being restored")
     backup_id: str = Field(..., description="Source backup identifier")
     message: str = Field(..., description="Human-readable status message")
-    guidance: Dict[str, Any] = Field(
+    guidance: dict[str, Any] = Field(
         ..., description="Post-restore guidance and next steps"
     )
 
@@ -82,10 +80,10 @@ class RestoreStatusResponse(BaseModel):
     component_type: str = Field(..., description="Type of component being restored")
     component_id: str = Field(..., description="Component being restored")
     backup_id: str = Field(..., description="Source backup")
-    progress_details: Optional[Dict[str, Any]] = Field(
+    progress_details: dict[str, Any] | None = Field(
         None, description="Detailed progress information"
     )
-    execution_time: Optional[str] = Field(None, description="Time taken for restore")
-    interpretation: Dict[str, Any] = Field(
+    execution_time: str | None = Field(None, description="Time taken for restore")
+    interpretation: dict[str, Any] = Field(
         ..., description="User-friendly interpretation of status"
     )

@@ -69,12 +69,19 @@ docker run \
 git clone <repository-url>
 cd selent-mcp
 
-# Set your API keys
-export MERAKI_API_KEY="your_meraki_api_key_here"
-export SELENT_API_KEY="your_selent_api_key_here"  # Optional, for backup/restore
+# Build the Docker image
+docker build -t selent-mcp:latest .
 
-# Start the server
 docker-compose up -d
+```
+
+**Testing the Build**:
+
+```bash
+docker run -i --rm \
+  -e MERAKI_API_KEY=test_key \
+  -e SELENT_API_KEY=test_key \
+  selent-mcp:latest
 ```
 
 ### 3. Configure Claude Desktop
@@ -82,6 +89,8 @@ docker-compose up -d
 Update your Claude Desktop configuration file:
 
 **Location**: `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+
+#### Single Meraki API Key (Production)
 
 ```json
 {
@@ -104,6 +113,40 @@ Update your Claude Desktop configuration file:
 }
 ```
 
+#### Multiple Meraki API Keys (Multi-Organization Support)
+
+Manage multiple Meraki organizations by providing multiple API keys with labels:
+
+```json
+{
+  "mcpServers": {
+    "Selent MCP": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--pull=always",
+        "-e",
+        "MERAKI_API_KEY=org1:api_key_1,org2:api_key_2,org3:api_key_3",
+        "-e",
+        "SELENT_API_KEY=your_selent_api_key_here",
+        "selentai/selent-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+**Multi-Key Format**: `label1:api_key_1,label2:api_key_2,...`
+
+With multiple keys configured, you can:
+
+- List all available API keys and their labels
+- Switch between different organizations
+- Execute API calls against specific organizations
+
+
 ### 4. Restart Claude Desktop
 
 Restart Claude Desktop to load the new MCP server.
@@ -121,11 +164,32 @@ Once Claude Desktop restarts, test your setup:
 
 # Test a compliance scan (requires Selent API key)
 "Run a PCI compliance test"
+
+# Test licensing features (requires Selent API key)
+"Get licensing expirations for my organization"
 ```
 
 The `--pull=always` flag ensures you automatically get the latest features and security updates without manual intervention.
 
 ## 📖 Usage Examples
+
+### **Multi-Key Management**
+
+When multiple Meraki API keys are configured, you can manage them:
+
+```
+# List all configured API keys
+"List all my Meraki API keys"
+"Show me which API keys are configured"
+
+# Switch between organizations
+"Switch to organization org1"
+"Use the org2 API key"
+
+# Get current active key
+"Which API key am I currently using?"
+"Show me the current organization"
+```
 
 ### **API Operations**
 
@@ -141,6 +205,10 @@ The `--pull=always` flag ensures you automatically get the latest features and s
 
 # Firewall rules
 "Get MX firewall rules for device Q2KN-Q6GH-CREQ"
+
+# Search for API endpoints
+"Find API endpoints related to switch ports"
+"How do I get SSID configuration?"
 ```
 
 ### **Compliance Testing**
@@ -220,27 +288,36 @@ docker-compose up -d --build
 - `execute_meraki_api_endpoint` - Execute any Meraki API call
 - `get_meraki_endpoint_parameters` - Get parameter requirements for endpoints
 
-## 💡 Key Benefits
+### **Multi-Key Management Tools** (available when multiple API keys configured)
 
-✅ **No Manual Tool Creation**: Access 400+ endpoints without writing individual tools  
-✅ **Single-Call Efficiency**: Common queries resolved instantly without multiple searches  
-✅ **Intelligent Discovery**: Natural language queries find the right endpoints  
-✅ **Always Up-to-Date**: Uses live Meraki API, automatically includes new endpoints  
-✅ **Production Ready**: Docker deployment for consistency across environments  
-✅ **Multi-User Support**: Scale across teams with individual API keys  
-✅ **Performance Optimized**: Caching, error handling, and smart parameter validation  
-✅ **Compliance Ready**: Built-in support for PCI DSS, HIPAA, SOC2, ISO 27001, NIST  
-✅ **Auto-Updates**: `--pull=always` ensures latest features and security patches  
-✅ **Enterprise Features**: Backup/restore, security auditing, performance analytics
+- `list_api_keys` - List all configured Meraki API keys
+- `get_current_api_key` - Get the currently active API key
+- `switch_api_key` - Switch to a different API key by label
+
+### **Selent Advanced Tools** (requires Selent API key)
+
+- `selent_get_licensing_expirations` - Get licensing expiration information
+- `selent_get_organization_licensing_summary` - Get organization licensing summary
+- `selent_run_compliance_test` - Run compliance tests (PCI, HIPAA, SOC2, ISO 27001, NIST)
+- `selent_create_backup` - Create organization backups
+- `selent_restore_from_backup` - Restore from backups
+
 
 ## 🔐 Security & Environment
 
 ### **Environment Variables**
 
-| Variable              | Required | Description                                                   |
-| --------------------- | -------- | ------------------------------------------------------------- |
-| `MERAKI_API_KEY`      | Yes      | Your Meraki Dashboard API key                                 |
-| `SELENT_API_KEY`      | Optional | Your Selent API key (required for advanced features)          |
+| Variable              | Required | Description                                                         | Examples                                                                                       |
+| --------------------- | -------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `MERAKI_API_KEY`      | Yes      | Your Meraki Dashboard API key(s). Supports single or multiple keys. | Single: `your_api_key`<br>Multi: `org1:key1,org2:key2`                                         |
+| `SELENT_API_KEY`      | Optional | Your Selent API key (required for advanced features)                | `your_selent_api_key`                                                                          |
+| `SELENT_API_BASE_URL` | Optional | Selent API base URL. Defaults to production.                        | Production: `https://backend.selent.ai` 
+
+**Multi-Key Format**: When using multiple Meraki API keys, format them as: `label1:api_key_1,label2:api_key_2,...`
+
+- Labels help identify which organization each key belongs to
+- Switch between keys using the key management tools
+- All keys remain available throughout the session
 
 ### **Security Best Practices**
 

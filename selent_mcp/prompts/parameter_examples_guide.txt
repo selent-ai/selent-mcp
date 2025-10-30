@@ -1,0 +1,111 @@
+# Common Meraki API Parameter Examples
+
+## Device Parameters
+
+**serial** (string)
+- Format: QXXX-XXXX-XXXX (Q followed by 3 blocks of 4 characters)
+- Example: `Q2XX-ABCD-1234`
+- Description: Unique device serial number
+- Used in: Device operations, switch ports, camera settings
+
+**portId** (string)
+- Format: Number as string
+- Examples: `"1"`, `"4"`, `"24"`
+- Description: Physical port number on switch or appliance
+- Used in: Switch port configuration, port status
+
+## Network & Organization Parameters
+
+**networkId** (string)
+- Format: L_XXXXXXXXX (L followed by numbers)
+- Example: `L_123456789`
+- Description: Unique network identifier
+- Used in: Network clients, firewall rules, SSIDs
+
+**organizationId** (string)
+- Format: Numeric string
+- Example: `"123456"`
+- Description: Organization identifier
+- Used in: Organization-wide operations, inventory
+
+## Filtering & Pagination Parameters
+
+**timespan** (integer)
+- Format: Seconds as integer
+- Examples:
+  - `3600` (1 hour)
+  - `86400` (24 hours)
+  - `604800` (7 days)
+- Description: Time period for historical data
+- Used in: Client history, traffic analytics
+
+**perPage** (integer)
+- Format: Number (1-1000)
+- Example: `100`
+- Description: Results per page (max 1000)
+- Used in: Paginated list endpoints
+
+**startingAfter** (string)
+- Format: ISO 8601 timestamp
+- Example: `"2023-01-01T00:00:00Z"`
+- Description: Start timestamp for date range
+- Used in: Historical queries
+
+**endingBefore** (string)
+- Format: ISO 8601 timestamp
+- Example: `"2023-12-31T23:59:59Z"`
+- Description: End timestamp for date range
+- Used in: Historical queries
+
+## Special Parameters
+
+**kwargs** (JSON string)
+- Format: JSON object as string
+- Examples:
+  - `'{"timespan": 3600}'`
+  - `'{"perPage": 100, "startingAfter": "2023-01-01T00:00:00Z"}'`
+  - `'{"enabled": true, "vlan": 10}'`
+- Description: Additional parameters passed as JSON
+- Used in: When parameters aren't directly supported as function args
+- **Important**: Must be valid JSON string with double quotes
+
+## How to Use These Examples
+
+When calling `execute_meraki_api_endpoint`:
+
+### Simple Parameters (Direct)
+```python
+execute_meraki_api_endpoint(
+    section='devices',
+    method='getDevice',
+    serial='Q2XX-ABCD-1234'
+)
+```
+
+### Multiple Required Parameters
+```python
+execute_meraki_api_endpoint(
+    section='switch',
+    method='getDeviceSwitchPort',
+    serial='Q2XX-ABCD-1234',
+    portId='4'
+)
+```
+
+### With Additional Parameters (via kwargs)
+```python
+execute_meraki_api_endpoint(
+    section='networks',
+    method='getNetworkClients',
+    networkId='L_123456789',
+    kwargs='{"timespan": 3600, "perPage": 50}'
+)
+```
+
+## Tips
+
+1. **Always use correct ID format**: Check the prefix (Q for devices, L for networks)
+2. **JSON in kwargs**: Use double quotes, not single quotes inside the JSON
+3. **Port numbers**: Always strings, not integers ("4" not 4)
+4. **Timestamps**: Use ISO 8601 format with timezone (Z for UTC)
+5. **Boolean values**: Use true/false (lowercase) in JSON
